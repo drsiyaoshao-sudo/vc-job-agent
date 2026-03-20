@@ -268,6 +268,30 @@ def get_scrape_status():
     return JSONResponse(scrape_status)
 
 
+@app.post("/api/score")
+def trigger_score(background_tasks: BackgroundTasks):
+    """Score all unscored jobs in the database."""
+    if scrape_status["running"]:
+        return JSONResponse({"status": "already_running"})
+
+    def _run_score():
+        from database import engine
+        from sqlmodel import Session as S
+        scrape_status["running"] = True
+        try:
+            with S(engine) as session:
+                scored = score_unscored_jobs(session)
+            scrape_status["last_scored"] = scored
+            logger.info(f"Manual score run complete: {scored} jobs scored")
+        except Exception as e:
+            logger.error(f"Score pipeline failed: {e}")
+        finally:
+            scrape_status["running"] = False
+
+    background_tasks.add_task(_run_score)
+    return JSONResponse({"status": "started"})
+
+
 @app.post("/api/weekly-report")
 def trigger_weekly_report(background_tasks: BackgroundTasks):
     """Manually trigger the weekly digest email (useful for testing)."""

@@ -70,8 +70,7 @@ def score_job(job: Job) -> JobMatchResult | None:
     try:
         response = client.messages.parse(
             model="claude-opus-4-6",
-            max_tokens=1024,
-            thinking={"type": "adaptive"},
+            max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": content}],
             output_format=JobMatchResult,
