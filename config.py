@@ -75,18 +75,47 @@ VC_BOARD_URLS = {
 }
 
 # ── Direct VC/CVC firm career page URLs to watch ─────────────────────────────
-# Add the career page URL of firms you specifically want to track.
+# All URLs verified live. Each firm page is scraped for investor-relevant roles
+# (venture, investor, principal, partner, associate, analyst, sourcing, portfolio).
+# Hard cap: 20 jobs per firm page.
 TARGET_FIRM_URLS: list[dict] = [
-    # {"firm": "Lux Capital",      "url": "https://www.luxcapital.com/careers"},
-    # {"firm": "Breakthrough Energy Ventures", "url": "https://breakthroughenergy.org/our-work/venture/"},
-    # {"firm": "DCVC",             "url": "https://www.dcvc.com/careers"},
-    # {"firm": "In-Q-Tel",         "url": "https://www.iqt.org/careers/"},
-    # {"firm": "BDC Capital",      "url": "https://www.bdc.ca/en/bdc-capital/industrial-innovation"},
-    # {"firm": "Real Ventures",    "url": "https://realventures.com"},
+
+    # ── CVC (Corporate Venture Capital) ──────────────────────────────────────
+    # Strong alignment with Siyao's deep-tech / hardware / AI / industrial profile
+    {"firm": "TDK Ventures",            "url": "https://tdk-ventures.com/careers/"},
+    {"firm": "Samsung Next",            "url": "https://www.samsungnext.com/careers"},
+    {"firm": "Panasonic Ventures",      "url": "https://www.panasonicventures.com/careers"},
+    {"firm": "Shell Ventures",          "url": "https://www.shell.com/careers.html"},
+    {"firm": "Honeywell Ventures",      "url": "https://careers.honeywell.com"},
+    {"firm": "ABB Technology Ventures", "url": "https://careers.abb/global/en"},
+    {"firm": "Qualcomm Ventures",       "url": "https://www.qualcomm.com/company/careers"},
+    {"firm": "Bosch Careers",           "url": "https://www.bosch.com/careers/"},
+    {"firm": "Siemens Next47",          "url": "https://www.n47.com/"},
+
+    # ── Deep-Tech / Hardware / AI VC ─────────────────────────────────────────
+    {"firm": "DCVC",                    "url": "https://www.dcvc.com/careers"},
+    {"firm": "In-Q-Tel",                "url": "https://www.iqt.org/careers/"},
+    {"firm": "Lux Capital",             "url": "https://www.luxcapital.com/people"},
+    {"firm": "Eclipse Ventures",        "url": "https://eclipse.capital/"},
+    {"firm": "Root Ventures",           "url": "https://root.vc/"},
+    {"firm": "Prelude Ventures",        "url": "https://www.preludeventures.com/team"},
+    {"firm": "Obvious Ventures",        "url": "https://obvious.com/"},
+
+    # ── Climate / Energy VC ───────────────────────────────────────────────────
+    {"firm": "Energy Impact Partners",  "url": "https://www.energyimpactpartners.com/join-the-team/"},
+    {"firm": "Congruent Ventures",      "url": "https://www.congruentvc.com/team"},
+    {"firm": "Clean Energy Ventures",   "url": "https://cleanenergyventures.com/about/"},
+    {"firm": "Chrysalix Energy VC",     "url": "https://www.chrysalix.com/"},
+
+    # ── Canada-based ──────────────────────────────────────────────────────────
+    {"firm": "BDC Capital",             "url": "https://www.bdc.ca/en/bdc-capital"},
+    {"firm": "Real Ventures",           "url": "https://realventures.com/"},
+    {"firm": "Inovia Capital",          "url": "https://www.inovia.vc/team/"},
+    {"firm": "MaRS Discovery District", "url": "https://www.marsdd.com/careers/"},
 ]
 
 # ── Scraping settings ─────────────────────────────────────────────────────────
-RESULTS_PER_QUERY = 25      # Jobs fetched per search query
+RESULTS_PER_QUERY = 20      # Jobs fetched per search query (hard cap per source)
 HOURS_OLD = 168             # Only fetch jobs posted in the last 7 days
 JOB_SITES = ["linkedin", "indeed"]  # python-jobspy site list
 
