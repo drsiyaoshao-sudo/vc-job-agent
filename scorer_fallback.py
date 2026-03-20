@@ -12,11 +12,26 @@ Scores are labelled "[fallback]" in the headline so you know the source.
 """
 from __future__ import annotations
 
+import hashlib as _hashlib
 import math
 import re
 from typing import Optional
 
-from config import PROFILE
+_profile_cache: dict = {}   # hash → (tokens, idf)
+
+
+def _get_profile_vectors(profile_text: str) -> tuple[list, dict]:
+    """Cache TF-IDF vectors per unique profile text (by hash)."""
+    h = _hashlib.md5(profile_text.encode()).hexdigest()
+    if h not in _profile_cache:
+        tokens = _tokenize(profile_text)
+        freq: dict[str, int] = {}
+        for t in tokens:
+            freq[t] = freq.get(t, 0) + 1
+        idf = {w: 1.0 / (1.0 + math.log(1 + cnt)) for w, cnt in freq.items()}
+        _profile_cache[h] = (tokens, idf)
+    return _profile_cache[h]
+
 
 # ── Role-title keywords (checked against job TITLE) ──────────────────────────
 # Each entry: (keywords, points_if_matched)
@@ -96,14 +111,6 @@ def _cosine(a: dict[str, float], b: dict[str, float]) -> float:
     return dot / (mag_a * mag_b)
 
 
-# Pre-compute profile IDF once at import time
-_PROFILE_TOKENS  = _tokenize(PROFILE)
-_PROFILE_FREQ: dict[str, int] = {}
-for _t in _PROFILE_TOKENS:
-    _PROFILE_FREQ[_t] = _PROFILE_FREQ.get(_t, 0) + 1
-_IDF = {w: 1.0 / (1.0 + math.log(1 + cnt)) for w, cnt in _PROFILE_FREQ.items()}
-
-
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
 def score_job_fallback(
@@ -111,11 +118,17 @@ def score_job_fallback(
     company: str,
     description: Optional[str],
     location: Optional[str] = None,
+    profile_text: Optional[str] = None,
 ) -> dict:
     """
     Score a job using keyword + cosine similarity.
     Returns: {score, headline, pros, cons, key_requirements, method='fallback'}
     """
+    if profile_text is None:
+        from config import PROFILE
+        profile_text = PROFILE
+    profile_tokens, idf = _get_profile_vectors(profile_text)
+
     title_l    = title.lower()
     full_text  = f"{title} {company} {description or ''} {location or ''}".lower()
     pros: list[str] = []
@@ -140,8 +153,8 @@ def score_job_fallback(
 
     # ── Layer 3: TF-IDF cosine (0-20) ────────────────────────────────────────
     job_tokens  = _tokenize(full_text)
-    job_vec     = _tfidf_vec(job_tokens, _IDF)
-    profile_vec = _tfidf_vec(_PROFILE_TOKENS, _IDF)
+    job_vec     = _tfidf_vec(job_tokens, idf)
+    profile_vec = _tfidf_vec(profile_tokens, idf)
     cosine_pts  = min(_cosine(job_vec, profile_vec) * 200, 20)  # scale up then cap
 
     raw = title_pts + domain_pts + cosine_pts  # max theoretical = 100

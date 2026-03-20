@@ -1,7 +1,7 @@
 """
 Claude-powered job scoring module.
 Uses claude-opus-4-6 with adaptive thinking + structured outputs
-to evaluate how well each job matches Siyao's VC/CVC target profile.
+to evaluate how well each job matches the candidate's target profile.
 """
 from __future__ import annotations
 
@@ -13,29 +13,26 @@ import anthropic
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from config import PROFILE
 from database import Job
 from notifier import notify_job
 from scorer_fallback import score_job_fallback
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = f"""You are a career advisor helping Dr. Siyao Shao evaluate job postings for
-Venture Capital investor and partner roles. Your job is to score how well a posting fits his
-background and target career.
+
+def _build_system_prompt(profile_text: str) -> str:
+    return f"""You are a career advisor helping evaluate job postings for the following candidate.
+Score how well each posting fits their background and target career.
 
 CANDIDATE PROFILE:
-{PROFILE}
+{profile_text}
 
 SCORING RUBRIC (0–100):
-- 85–100: Excellent match — VC/CVC investor or partner role squarely in deep-tech, hardware,
-          climate, AI/ML, or industrial domains; seniority (Associate → Partner) fits his background.
-- 65–84:  Good match — VC/CVC role with slightly different domain or seniority, but clearly
-          leverages his technical due-diligence skills and founder experience.
-- 45–64:  Moderate — adjacent role (e.g., technology scout, innovation/strategy at a corporate,
-          EIR at a fund) or a non-VC investor role that could pivot toward VC.
-- 20–44:  Weak — mostly irrelevant to a VC career; maybe a deep-tech operating role.
-- 0–19:   Not relevant — unrelated to VC/investing or Siyao's background entirely.
+- 85–100: Excellent match — role squarely fits their target, domain, and seniority.
+- 65–84:  Good match — clearly leverages their skills with minor gaps.
+- 45–64:  Moderate — adjacent role that could pivot toward their target.
+- 20–44:  Weak — mostly irrelevant to their career target.
+- 0–19:   Not relevant.
 
 Return ONLY valid JSON — no markdown, no extra text.
 """
@@ -66,12 +63,20 @@ def score_job(job: Job) -> JobMatchResult | None:
             f"DESCRIPTION:\n{desc}"
         )
 
+    from database import engine, get_settings
+    from sqlmodel import Session as _S
+    with _S(engine) as _sess:
+        _settings = get_settings(_sess)
+    from profile import get_profile_text
+    _profile = get_profile_text(_settings)
+    system = _build_system_prompt(_profile)
+
     try:
         client = anthropic.Anthropic()
         response = client.messages.parse(
             model="claude-opus-4-6",
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=[{"role": "user", "content": content}],
             output_format=JobMatchResult,
         )
@@ -84,6 +89,7 @@ def score_job(job: Job) -> JobMatchResult | None:
             company=job.company,
             description=job.description,
             location=job.location,
+            profile_text=_profile,
         )
         return JobMatchResult(
             score=fb["score"],

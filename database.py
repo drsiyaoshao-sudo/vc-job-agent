@@ -1,6 +1,8 @@
 """
 SQLite database setup using SQLModel.
 """
+from __future__ import annotations
+
 from datetime import date, datetime
 from enum import Enum
 from typing import Optional
@@ -53,6 +55,15 @@ class Job(SQLModel, table=True):
     contact_email: Optional[str] = None
 
 
+class UserSettings(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    owner_name: str = Field(default="Job Seeker")
+    resume_text: str = Field(default="")          # full resume / profile text
+    target_titles: str = Field(default="[]")      # JSON list[str] of target job titles
+    job_anticipations: str = Field(default="")    # free-text: domains, preferences, seniority
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 def create_db():
     SQLModel.metadata.create_all(engine)
 
@@ -60,6 +71,33 @@ def create_db():
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+def get_settings(session: Session) -> "UserSettings":
+    """Return the single settings row, creating it with defaults if missing."""
+    from config import PROFILE, SEARCH_QUERIES
+    settings = session.exec(select(UserSettings)).first()
+    if not settings:
+        import json
+        settings = UserSettings(
+            owner_name="Siyao Shao",
+            resume_text=PROFILE.strip(),
+            target_titles=json.dumps([
+                "Venture Capital Associate",
+                "Investment Associate",
+                "VC Analyst",
+                "Investment Analyst",
+                "Venture Principal",
+                "CVC Associate",
+            ]),
+            job_anticipations="VC and CVC investor roles in deep-tech, hardware, AI, climate tech. "
+                              "Open to Associate through Principal level. "
+                              "Prefer early-stage funds and corporate venture arms.",
+        )
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+    return settings
 
 
 def upsert_job(session: Session, job_data: dict) -> tuple[Job, bool]:

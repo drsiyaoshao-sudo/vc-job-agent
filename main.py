@@ -248,6 +248,47 @@ def tracker(
     })
 
 
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    from database import get_settings
+    import json
+    s = get_settings(session)
+    titles_raw = "\n".join(json.loads(s.target_titles or "[]"))
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "scrape_status": scrape_status,
+        "settings": s,
+        "titles_raw": titles_raw,
+    })
+
+
+@app.post("/api/settings")
+def save_settings(
+    owner_name: str = Form(""),
+    resume_text: str = Form(""),
+    target_titles_raw: str = Form(""),
+    job_anticipations: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    from database import get_settings
+    import json
+    s = get_settings(session)
+    if owner_name.strip():
+        s.owner_name = owner_name.strip()
+    s.resume_text = resume_text.strip()
+    titles = [t.strip() for t in target_titles_raw.splitlines() if t.strip()]
+    s.target_titles = json.dumps(titles)
+    s.job_anticipations = job_anticipations.strip()
+    from datetime import datetime
+    s.updated_at = datetime.utcnow()
+    session.add(s)
+    session.commit()
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
+
+
 # ── Routes: API ───────────────────────────────────────────────────────────────
 
 @app.post("/api/scrape")
