@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}VC Job Agent{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .score-green  { background: #16a34a; }
+    .score-yellow { background: #ca8a04; }
+    .score-orange { background: #ea580c; }
+    .score-red    { background: #dc2626; }
+    .score-gray   { background: #4b5563; }
+    .badge-linkedin  { background: #0077b5; }
+    .badge-indeed    { background: #2164f3; }
+    .badge-wellfound { background: #fb923c; }
+    .badge-jobs_vc   { background: #7c3aed; }
+    .badge-direct    { background: #0d9488; }
+    .badge-jobspy    { background: #2164f3; }
+    .status-new        { background:#374151; color:#d1d5db; }
+    .status-reviewing  { background:#1d4ed8; color:#bfdbfe; }
+    .status-applied    { background:#065f46; color:#a7f3d0; }
+    .status-interview  { background:#92400e; color:#fde68a; }
+    .status-offer      { background:#14532d; color:#86efac; }
+    .status-rejected   { background:#450a0a; color:#fca5a5; }
+    .status-archived   { background:#1f2937; color:#9ca3af; }
+  </style>
+</head>
+<body class="h-full text-gray-100" x-data="{ mobileOpen: false }">
+
+  <!-- Sidebar + content layout -->
+  <div class="flex h-full">
+
+    <!-- Sidebar -->
+    <aside class="hidden lg:flex lg:flex-col w-56 bg-gray-900 border-r border-gray-800 fixed h-full z-20">
+      <div class="px-4 py-5 border-b border-gray-800">
+        <div class="text-xs font-semibold text-violet-400 uppercase tracking-widest">VC Job Agent</div>
+        <div class="text-gray-400 text-xs mt-0.5">for Siyao Shao</div>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <a href="/" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+          {% if request.url.path == '/' %}bg-violet-900/60 text-violet-200{% else %}text-gray-400 hover:bg-gray-800 hover:text-gray-100{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+          </svg>
+          Dashboard
+        </a>
+        <a href="/tracker" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+          {% if request.url.path == '/tracker' %}bg-violet-900/60 text-violet-200{% else %}text-gray-400 hover:bg-gray-800 hover:text-gray-100{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+          </svg>
+          Applications
+        </a>
+      </nav>
+
+      <!-- Scrape status in sidebar -->
+      <div class="px-3 pb-4" x-data="scrapePoller()" x-init="init()">
+        <button @click="startScrape()"
+          :disabled="status.running"
+          class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
+            bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          <svg class="w-4 h-4" :class="status.running ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span x-text="status.running ? 'Scraping…' : 'Scrape Jobs'"></span>
+        </button>
+        <template x-if="status.last_run">
+          <p class="text-gray-500 text-xs mt-2 text-center">
+            Last: <span x-text="formatTime(status.last_run)"></span>
+            <template x-if="status.last_count !== null">
+              <span> · <span x-text="status.last_count"></span> new</span>
+            </template>
+          </p>
+        </template>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 lg:ml-56 min-h-full">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script>
+    function scrapePoller() {
+      return {
+        status: {{ scrape_status | tojson }},
+        init() {
+          this.poll();
+        },
+        poll() {
+          setInterval(async () => {
+            const res = await fetch('/api/scrape-status');
+            this.status = await res.json();
+            if (!this.status.running && this._wasRunning) {
+              window.location.reload();
+            }
+            this._wasRunning = this.status.running;
+          }, 3000);
+        },
+        async startScrape() {
+          await fetch('/api/scrape', { method: 'POST' });
+          this.status.running = true;
+        },
+        formatTime(iso) {
+          if (!iso) return '';
+          return new Date(iso + 'Z').toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        }
+      }
+    }
+  </script>
+</body>
+</html>

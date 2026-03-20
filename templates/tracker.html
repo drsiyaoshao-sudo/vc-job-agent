@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Applications — VC Job Agent{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-6xl mx-auto">
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Application Tracker</h1>
+    <p class="text-gray-400 text-sm mt-1">Active applications — reviewing, applied, interviews, offers</p>
+  </div>
+
+  {% if not jobs %}
+  <div class="flex flex-col items-center justify-center py-20 text-gray-500">
+    <svg class="w-12 h-12 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+    <p class="text-lg font-medium">No active applications yet</p>
+    <p class="text-sm mt-1">Open a job from the <a href="/" class="text-violet-400">dashboard</a> and mark it as Reviewing or Applied.</p>
+  </div>
+
+  {% else %}
+
+  <!-- Overdue follow-ups banner -->
+  {% set overdue = jobs | selectattr('id', 'in', overdue_ids) | list %}
+  {% if overdue %}
+  <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+    <svg class="w-5 h-5 text-yellow-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+    </svg>
+    <div>
+      <p class="text-yellow-300 text-sm font-medium">{{ overdue | length }} follow-up{{ 's' if overdue|length > 1 }} overdue</p>
+      <p class="text-yellow-500 text-xs mt-0.5">
+        {% for j in overdue %}{{ j.company }}{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Applications table -->
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wide">
+          <th class="text-left px-4 py-3">Role</th>
+          <th class="text-left px-4 py-3 hidden sm:table-cell">Score</th>
+          <th class="text-left px-4 py-3 hidden md:table-cell">Applied</th>
+          <th class="text-left px-4 py-3 hidden lg:table-cell">Follow-up</th>
+          <th class="text-left px-4 py-3">Status</th>
+          <th class="text-left px-4 py-3 hidden xl:table-cell">Contact</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-800">
+        {% for job in jobs %}
+        {% set color = score_color(job.match_score) %}
+        {% set is_overdue = job.id in overdue_ids %}
+        <tr class="hover:bg-gray-800/50 transition-colors {% if is_overdue %}bg-yellow-900/10{% endif %}">
+
+          <!-- Role -->
+          <td class="px-4 py-3">
+            <a href="/job/{{ job.id }}" class="hover:text-violet-300 transition-colors">
+              <div class="font-medium text-gray-100 leading-snug">{{ job.title }}</div>
+              <div class="text-gray-500 text-xs mt-0.5">{{ job.company }}</div>
+            </a>
+          </td>
+
+          <!-- Score -->
+          <td class="px-4 py-3 hidden sm:table-cell">
+            {% if job.match_score is not none %}
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white score-{{ color }}">
+              {{ job.match_score }}
+            </span>
+            {% else %}
+            <span class="text-gray-600">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Applied date -->
+          <td class="px-4 py-3 text-gray-400 hidden md:table-cell">
+            {{ job.applied_date or '—' }}
+          </td>
+
+          <!-- Follow-up -->
+          <td class="px-4 py-3 hidden lg:table-cell">
+            {% if job.follow_up_date %}
+            <span class="{% if is_overdue %}text-yellow-400 font-medium{% else %}text-gray-400{% endif %}">
+              {% if is_overdue %}⚠ {% endif %}{{ job.follow_up_date }}
+            </span>
+            {% else %}
+            <span class="text-gray-600">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Status -->
+          <td class="px-4 py-3">
+            <span class="text-xs px-2 py-0.5 rounded-full status-{{ job.status }}">{{ job.status }}</span>
+          </td>
+
+          <!-- Contact -->
+          <td class="px-4 py-3 text-gray-500 hidden xl:table-cell">
+            {% if job.contact_name %}
+            <div class="text-gray-300 text-xs">{{ job.contact_name }}</div>
+            {% if job.contact_email %}
+            <a href="mailto:{{ job.contact_email }}" class="text-violet-400 hover:underline text-xs">{{ job.contact_email }}</a>
+            {% endif %}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+
+          <!-- Link -->
+          <td class="px-4 py-3">
+            <a href="/job/{{ job.id }}" class="text-gray-500 hover:text-violet-400 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </a>
+          </td>
+        </tr>
+
+        <!-- Notes row (if notes exist) -->
+        {% if job.notes %}
+        <tr class="{% if is_overdue %}bg-yellow-900/5{% endif %}">
+          <td colspan="7" class="px-4 pb-3 pt-0">
+            <p class="text-gray-500 text-xs italic pl-0.5">📝 {{ job.notes | truncate(160) }}</p>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-gray-600 text-xs mt-3 text-right">{{ jobs | length }} active application{{ 's' if jobs|length != 1 }}</p>
+  {% endif %}
+</div>
+{% endblock %}

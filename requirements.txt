@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+anthropic
+jobspy
+httpx
+beautifulsoup4
+jinja2
+python-dotenv
+aiofiles
+apscheduler

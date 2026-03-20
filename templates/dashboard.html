@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — VC Job Agent{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-7xl mx-auto">
+
+  <!-- Header -->
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Job Dashboard</h1>
+    <p class="text-gray-400 text-sm mt-1">VC & CVC investor/partner roles — scored by Claude for your profile</p>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+    {% set stat_items = [
+      ("Total", stats.total, "text-gray-300", "bg-gray-800"),
+      ("New", stats.new, "text-blue-300", "bg-blue-900/40"),
+      ("Applied", stats.applied, "text-emerald-300", "bg-emerald-900/40"),
+      ("Interview", stats.interview, "text-yellow-300", "bg-yellow-900/40"),
+      ("Score 80+", stats.excellent, "text-green-300", "bg-green-900/40"),
+      ("Score 60+", stats.good, "text-yellow-300", "bg-yellow-900/40"),
+      ("Unscored", stats.unscored, "text-gray-400", "bg-gray-800"),
+    ] %}
+    {% for label, val, text_cls, bg_cls in stat_items %}
+    <div class="rounded-xl {{ bg_cls }} px-4 py-3 text-center">
+      <div class="text-2xl font-bold {{ text_cls }}">{{ val }}</div>
+      <div class="text-xs text-gray-500 mt-0.5">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Filters -->
+  <form method="get" action="/" class="flex flex-wrap gap-2 mb-6">
+    <!-- Status filter -->
+    <select name="status" onchange="this.form.submit()"
+      class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5 focus:ring-violet-500">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+      <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s | capitalize }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Source filter -->
+    <select name="source" onchange="this.form.submit()"
+      class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5 focus:ring-violet-500">
+      <option value="">All sources</option>
+      {% for src in sources %}
+      <option value="{{ src }}" {% if filters.source == src %}selected{% endif %}>{{ src }}</option>
+      {% endfor %}
+    </select>
+
+    <!-- Min score -->
+    <select name="min_score" onchange="this.form.submit()"
+      class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5 focus:ring-violet-500">
+      <option value="0" {% if filters.min_score == 0 %}selected{% endif %}>Any score</option>
+      <option value="40" {% if filters.min_score == 40 %}selected{% endif %}>40+ moderate</option>
+      <option value="60" {% if filters.min_score == 60 %}selected{% endif %}>60+ good</option>
+      <option value="80" {% if filters.min_score == 80 %}selected{% endif %}>80+ excellent</option>
+    </select>
+
+    <!-- Sort -->
+    <select name="sort" onchange="this.form.submit()"
+      class="bg-gray-800 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5 focus:ring-violet-500">
+      <option value="score" {% if filters.sort == 'score' %}selected{% endif %}>Sort: Score</option>
+      <option value="date"  {% if filters.sort == 'date'  %}selected{% endif %}>Sort: Date</option>
+      <option value="company" {% if filters.sort == 'company' %}selected{% endif %}>Sort: Company</option>
+    </select>
+
+    {% if filters.status or filters.source or filters.min_score %}
+    <a href="/" class="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 border border-gray-700 rounded-lg">
+      Clear filters
+    </a>
+    {% endif %}
+  </form>
+
+  <!-- Job grid -->
+  {% if not jobs %}
+  <div class="flex flex-col items-center justify-center py-20 text-gray-500">
+    <svg class="w-12 h-12 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <p class="text-lg font-medium">No jobs found</p>
+    <p class="text-sm mt-1">Click <span class="text-violet-400">Scrape Jobs</span> in the sidebar to fetch new listings.</p>
+  </div>
+  {% else %}
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for job in jobs %}
+    {% set color = score_color(job.match_score) %}
+    <a href="/job/{{ job.id }}"
+      class="group block bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-violet-700 hover:shadow-lg hover:shadow-violet-900/20 transition-all">
+
+      <!-- Top row: score badge + source -->
+      <div class="flex items-center justify-between mb-3">
+        <span class="inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-full text-white score-{{ color }}">
+          {% if job.match_score is not none %}
+            {{ job.match_score }}/100
+          {% else %}
+            —
+          {% endif %}
+        </span>
+        <span class="text-xs px-2 py-0.5 rounded-full text-white badge-{{ job.source }}">
+          {{ job.source }}
+        </span>
+      </div>
+
+      <!-- Title + company -->
+      <h2 class="font-semibold text-white text-sm leading-snug group-hover:text-violet-300 transition-colors line-clamp-2">
+        {{ job.title }}
+      </h2>
+      <p class="text-gray-400 text-xs mt-0.5">{{ job.company }}</p>
+
+      <!-- Location + remote -->
+      {% if job.location or job.is_remote %}
+      <p class="text-gray-500 text-xs mt-1">
+        {% if job.is_remote %}<span class="text-emerald-400">Remote</span>{% endif %}
+        {% if job.location and job.is_remote %} · {% endif %}
+        {% if job.location %}{{ job.location }}{% endif %}
+      </p>
+      {% endif %}
+
+      <!-- Match headline -->
+      {% if job.match_headline %}
+      <p class="text-gray-400 text-xs mt-2 italic line-clamp-2">{{ job.match_headline }}</p>
+      {% endif %}
+
+      <!-- Bottom: status + date -->
+      <div class="flex items-center justify-between mt-3">
+        <span class="text-xs px-2 py-0.5 rounded-full status-{{ job.status }}">
+          {{ job.status }}
+        </span>
+        {% if job.posted_date %}
+        <span class="text-gray-600 text-xs">{{ job.posted_date[:10] }}</span>
+        {% elif job.scraped_at %}
+        <span class="text-gray-600 text-xs">scraped {{ job.scraped_at[:10] }}</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  <p class="text-gray-600 text-xs mt-4 text-right">{{ jobs | length }} jobs shown</p>
+  {% endif %}
+</div>
+{% endblock %}

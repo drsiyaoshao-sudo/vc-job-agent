@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} — VC Job Agent{% endblock %}
+
+{% block content %}
+{% set color = score_color(job.match_score) %}
+<div class="p-6 max-w-4xl mx-auto">
+
+  <!-- Back link -->
+  <a href="/" class="inline-flex items-center gap-1.5 text-gray-400 hover:text-gray-200 text-sm mb-5 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Back to dashboard
+  </a>
+
+  <!-- Header card -->
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-4">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="flex-1 min-w-0">
+        <h1 class="text-xl font-bold text-white leading-tight">{{ job.title }}</h1>
+        <p class="text-gray-300 mt-0.5">{{ job.company }}</p>
+        {% if job.location or job.is_remote %}
+        <p class="text-gray-500 text-sm mt-0.5">
+          {% if job.is_remote %}<span class="text-emerald-400">Remote</span>{% endif %}
+          {% if job.location and job.is_remote %} · {% endif %}
+          {{ job.location or '' }}
+        </p>
+        {% endif %}
+        {% if job.salary_range %}
+        <p class="text-gray-400 text-sm mt-1">💰 {{ job.salary_range }}</p>
+        {% endif %}
+      </div>
+
+      <!-- Score badge -->
+      <div class="text-center shrink-0">
+        <div class="w-16 h-16 rounded-full score-{{ color }} flex items-center justify-center text-xl font-bold text-white shadow-lg">
+          {% if job.match_score is not none %}{{ job.match_score }}{% else %}—{% endif %}
+        </div>
+        <p class="text-gray-500 text-xs mt-1">/ 100</p>
+      </div>
+    </div>
+
+    <!-- Meta row -->
+    <div class="flex flex-wrap gap-2 mt-4">
+      <span class="text-xs px-2 py-1 rounded-full text-white badge-{{ job.source }}">{{ job.source }}</span>
+      <span class="text-xs px-2 py-1 rounded-full status-{{ job.status }}">{{ job.status }}</span>
+      {% if job.posted_date %}<span class="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-400">Posted {{ job.posted_date[:10] }}</span>{% endif %}
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex flex-wrap gap-2 mt-4">
+      <a href="{{ job.url }}" target="_blank" rel="noopener"
+        class="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+        View Original Posting
+      </a>
+      <form method="post" action="/api/jobs/{{ job.id }}/rescore">
+        <button type="submit"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Re-score with Claude
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Left column: Claude analysis + description -->
+    <div class="lg:col-span-2 space-y-4">
+
+      <!-- Claude Analysis -->
+      {% if job.match_headline %}
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-5 h-5 rounded bg-violet-600 flex items-center justify-center text-xs font-bold">C</div>
+          <h2 class="font-semibold text-white text-sm">Claude's Assessment</h2>
+        </div>
+
+        <p class="text-gray-300 italic text-sm mb-4">"{{ job.match_headline }}"</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {% if job.match_pros %}
+          <div>
+            <h3 class="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Why it fits</h3>
+            <ul class="space-y-1.5">
+              {% for pro in job.match_pros %}
+              <li class="flex items-start gap-1.5 text-sm text-gray-300">
+                <span class="text-emerald-500 mt-0.5 shrink-0">✓</span>{{ pro }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% if job.match_cons %}
+          <div>
+            <h3 class="text-xs font-semibold text-red-400 uppercase tracking-wide mb-2">Concerns</h3>
+            <ul class="space-y-1.5">
+              {% for con in job.match_cons %}
+              <li class="flex items-start gap-1.5 text-sm text-gray-300">
+                <span class="text-red-500 mt-0.5 shrink-0">✗</span>{{ con }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if job.key_requirements %}
+        <div class="mt-4 pt-4 border-t border-gray-800">
+          <h3 class="text-xs font-semibold text-yellow-400 uppercase tracking-wide mb-2">Key things to address</h3>
+          <ul class="space-y-1.5">
+            {% for req in job.key_requirements %}
+            <li class="flex items-start gap-1.5 text-sm text-gray-300">
+              <span class="text-yellow-500 mt-0.5 shrink-0">→</span>{{ req }}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Job Description -->
+      {% if job.description %}
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <h2 class="font-semibold text-white text-sm mb-3">Job Description</h2>
+        <div class="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto pr-2
+          scrollbar-thin scrollbar-thumb-gray-700">{{ job.description }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Right column: tracking form -->
+    <div class="space-y-4">
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+        <h2 class="font-semibold text-white text-sm mb-4">Application Tracking</h2>
+
+        <form method="post" action="/api/jobs/{{ job.id }}/update" class="space-y-3">
+          <!-- Status -->
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Status</label>
+            <select name="status"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500">
+              {% for s in statuses %}
+              <option value="{{ s }}" {% if job.status == s %}selected{% endif %}>{{ s | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Applied date -->
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Applied Date</label>
+            <input type="date" name="applied_date" value="{{ job.applied_date or '' }}"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500"/>
+          </div>
+
+          <!-- Follow-up date -->
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Follow-up Reminder</label>
+            <input type="date" name="follow_up_date" value="{{ job.follow_up_date or '' }}"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500"/>
+          </div>
+
+          <!-- Contact -->
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Contact Name</label>
+            <input type="text" name="contact_name" value="{{ job.contact_name or '' }}"
+              placeholder="e.g. Jane Smith"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Contact Email</label>
+            <input type="email" name="contact_email" value="{{ job.contact_email or '' }}"
+              placeholder="jane@vcfund.com"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500"/>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Notes</label>
+            <textarea name="notes" rows="4" placeholder="Connection, referral, key points to mention…"
+              class="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 focus:ring-violet-500 resize-none">{{ job.notes or '' }}</textarea>
+          </div>
+
+          <button type="submit"
+            class="w-full py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium transition-colors">
+            Save Changes
+          </button>
+        </form>
+
+        <!-- Delete button -->
+        <div class="mt-3 pt-3 border-t border-gray-800">
+          <button onclick="confirmDelete({{ job.id }})"
+            class="w-full py-2 bg-red-900/40 hover:bg-red-900/70 text-red-400 rounded-lg text-sm transition-colors">
+            Remove Job
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function confirmDelete(id) {
+  if (!confirm('Remove this job from your list?')) return;
+  await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+  window.location.href = '/';
+}
+</script>
+{% endblock %}

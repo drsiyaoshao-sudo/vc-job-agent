@@ -1,0 +1,78 @@
+"""
+SQLite database setup using SQLModel.
+"""
+from datetime import date, datetime
+from enum import Enum
+from typing import Optional
+
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+
+DATABASE_URL = "sqlite:///./jobs.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+class JobStatus(str, Enum):
+    NEW = "new"
+    REVIEWING = "reviewing"
+    APPLIED = "applied"
+    INTERVIEW = "interview"
+    OFFER = "offer"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+
+
+class Job(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Core fields
+    title: str
+    company: str
+    location: Optional[str] = None
+    url: str = Field(unique=True, index=True)
+    source: str  # e.g. "linkedin", "indeed", "wellfound", "jobs_vc", "direct"
+    description: Optional[str] = None
+    salary_range: Optional[str] = None
+    is_remote: Optional[bool] = None
+    posted_date: Optional[datetime] = None
+    scraped_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Claude scoring
+    match_score: Optional[int] = None        # 0–100
+    match_headline: Optional[str] = None     # one-line summary
+    match_pros: Optional[str] = None         # JSON-encoded list[str]
+    match_cons: Optional[str] = None         # JSON-encoded list[str]
+    key_requirements: Optional[str] = None   # JSON-encoded list[str]
+    scored_at: Optional[datetime] = None
+
+    # Application tracking
+    status: str = Field(default=JobStatus.NEW)
+    notes: Optional[str] = None
+    applied_date: Optional[date] = None
+    follow_up_date: Optional[date] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+def create_db():
+    SQLModel.metadata.create_all(engine)
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+def upsert_job(session: Session, job_data: dict) -> tuple[Job, bool]:
+    """
+    Insert a new job or skip if URL already exists.
+    Returns (job, created) where created=True if it was newly inserted.
+    """
+    existing = session.exec(select(Job).where(Job.url == job_data["url"])).first()
+    if existing:
+        return existing, False
+
+    job = Job(**job_data)
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job, True
