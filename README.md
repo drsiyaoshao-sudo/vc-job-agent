@@ -4,16 +4,95 @@ A personal AI-powered job search agent built for **Dr. Siyao Shao**, targeting V
 
 ## Features
 
-- **Automated scraping** — LinkedIn, Indeed, Wellfound, jobs.vc, and direct VC firm career pages
-- **AI-powered scoring** — Claude Opus 4.6 scores each job 0–100 with pros, cons, and tailored application tips
+- **Automated scraping** — three-stage pipeline runs 4× daily (see [Scraping Pipeline](#scraping-pipeline))
+- **AI-powered scoring** — Claude Opus 4.6 scores each job 0–100 with pros, cons, and tailored application tips (see [Score Logic](#score-logic))
 - **Smart notifications**
-  - Score > 90 → instant WhatsApp message (CallMeBot)
-  - Score > 75 → instant email alert (Gmail SMTP)
+  - Score ≥ 90 → instant WhatsApp message (CallMeBot)
+  - Score ≥ 75 → instant email alert (Gmail SMTP)
   - Every Monday 8 AM → weekly digest email
   - Every day 8 AM → health check email confirming the agent is running
 - **Web dashboard** — browse jobs by score, source, and status; filter and sort in one click
 - **Application tracker** — track every application through reviewing → applied → interview → offer
 - **Always-on** — runs as a macOS LaunchAgent; auto-starts on login, auto-restarts on crash
+
+## Scraping Pipeline
+
+Each scheduled run executes three stages in order, with a hard cap of **20 jobs per source/query** to control scoring costs and keep runs under 5 minutes.
+
+### Stage 1 — LinkedIn major VC/CVC pages (`scrapers/jobspy.py`)
+
+Searches LinkedIn and Indeed using the queries defined in `config.py` (`SEARCH_QUERIES`). Covers broad VC/CVC investor role searches across all companies.
+
+```
+"venture capital investor deep tech"
+"CVC investor technology"
+"hardware venture capital principal"
+... (10 queries total)
+```
+
+Results per query: **20 max** · Source tag: `linkedin` / `indeed`
+
+### Stage 2 — Direct company career pages (`scrapers/vc_boards.py`)
+
+Visits each firm URL listed in `TARGET_FIRM_URLS` in `config.py` and extracts investor-relevant job postings directly from the firm's own career page. This catches roles that never appear on job boards.
+
+```python
+TARGET_FIRM_URLS = [
+    {"firm": "Lux Capital",   "url": "https://www.luxcapital.com/careers"},
+    {"firm": "DCVC",          "url": "https://www.dcvc.com/careers"},
+]
+```
+
+Filters by investor keywords: `venture, investor, investment, associate, principal, partner, cvc, portfolio, analyst, sourcing`.
+
+Results per firm: **20 max** · Source tag: `direct`
+
+### Stage 3 — VC-specific job boards (`scrapers/vc_boards.py`, `scrapers/wellfound.py`)
+
+Scrapes VC-focused job boards that aggregate investor roles across many firms.
+
+| Board | URL |
+|-------|-----|
+| jobs.vc | https://jobs.vc |
+| Wellfound | https://wellfound.com |
+
+Results per board: **20 max** · Source tag: `jobs_vc` / `wellfound`
+
+All three stages deduplicate by URL before storing to the database — the same job found on multiple sources is stored only once.
+
+---
+
+## Score Logic
+
+Every job is scored by **Claude Opus 4.6** with adaptive thinking against Dr. Shao's full profile. The model returns a structured JSON object with `score`, `headline`, `pros`, `cons`, and `key_requirements`.
+
+### Scoring Rubric (0–100)
+
+| Score | Label | Criteria |
+|-------|-------|----------|
+| **85–100** | Excellent | VC/CVC investor or partner role squarely in deep-tech, hardware, climate, AI/ML, or industrial domains; seniority (Associate → Partner) fits his background |
+| **65–84** | Good | VC/CVC role with a slightly different domain or seniority, but clearly leverages his technical due-diligence skills and founder experience |
+| **45–64** | Moderate | Adjacent role — technology scout, EIR at a fund, corporate innovation/strategy — or a non-VC investor role that could pivot toward VC |
+| **20–44** | Weak | Mostly irrelevant to a VC career; perhaps a deep-tech operating/engineering role |
+| **0–19** | Not relevant | Unrelated to VC/investing or Dr. Shao's background entirely |
+
+### What Claude weighs heavily
+
+- Deep-tech investment thesis alignment (hardware, MEMS, edge AI, climate, industrial IoT)
+- Seniority match (Associate → Principal → Partner)
+- CVC vs. independent VC distinction (CVC valued for TDK, Samsung Next, Bosch Ventures, etc.)
+- Founder/operator experience valued by the firm
+- Geographic fit (remote-friendly or Montréal/North America/global)
+
+### Notification thresholds
+
+| Score | Action |
+|-------|--------|
+| ≥ 90 | Instant WhatsApp alert via CallMeBot |
+| ≥ 75 | Instant email alert via Gmail |
+| Any | Stored in dashboard for manual review |
+
+---
 
 ## Tech Stack
 
