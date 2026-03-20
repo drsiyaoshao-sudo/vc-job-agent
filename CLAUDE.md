@@ -59,13 +59,13 @@ To change the cap, update `RESULTS_PER_QUERY` in `config.py` (affects jobspy) an
 
 **Score rubric:**
 
-| Range  | Label    | Meaning                                                    |
-|--------|----------|------------------------------------------------------------|
-| 85–100 | Excellent | VC/CVC investor/partner in deep-tech, hardware, climate, AI |
-| 65–84  | Good      | VC/CVC with slightly different domain or seniority         |
-| 45–64  | Moderate  | Adjacent (tech scout, EIR, corporate innovation)           |
-| 20–44  | Weak      | Deep-tech operating role, loosely related                  |
-| 0–19   | Not relevant | Unrelated to VC or Siyao's background                  |
+| Range  | Label    | Meaning                                                                          |
+|--------|----------|----------------------------------------------------------------------------------|
+| 85–100 | Excellent | VC/CVC investor/partner in deep-tech, hardware, climate, AI; OR founding/staff engineer at a deep-tech Seed–Series B startup |
+| 65–84  | Good      | VC/CVC with slightly different domain or seniority; principal/lead research engineer; technical sales / FAE / solutions engineer in hardware or AI |
+| 45–64  | Moderate  | Adjacent operating role (EIR, tech scout, product engineer, corporate innovation); research scientist without startup context |
+| 20–44  | Weak      | Generic software/hardware engineering role without deep-tech or startup angle     |
+| 0–19   | Not relevant | Unrelated to Siyao's background                                               |
 
 **Notification thresholds** (set in `notifier.py`):
 - Score ≥ 90 → instant WhatsApp alert (CallMeBot)

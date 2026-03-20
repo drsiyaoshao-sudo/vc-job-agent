@@ -7,7 +7,9 @@ PROFILE = """
 Name: Dr. Siyao Shao
 Current Role: Chief Technology Officer, RECHO AI Inc. (Montréal, QC, Canada)
 Location: Montréal, QC — open to remote or relocation globally.
-Target Role: Venture Capital Investor or Partner (VC and CVC)
+Target Roles: Venture Capital Investor or Partner (VC and CVC); Founding Engineer at early-stage
+  deep-tech startups (Seed–Series B); Principal/Staff Research Engineer; Technical Sales Engineer;
+  Field Application Engineer (FAE); Solutions Engineer in hardware/AI/industrial domains
 
 BACKGROUND
 - Ph.D., Mechanical Engineering — University of Minnesota (2014–2020)
@@ -41,15 +43,22 @@ DOMAINS OF EXPERTISE
 - Industrial IoT, climate tech, audio event detection, multiphase flow,
   renewable energy systems, biometrics, edge computing, hardware AI
 
-VC FIT SUMMARY
+FIT SUMMARY
 Siyao combines rare technical depth (PhD + patents + hands-on hardware/AI R&D) with
 direct commercialization and fundraising experience. He has sat on the founder side,
-built teams, closed enterprise pilots, and navigated pre-seed fundraising — making him
-uniquely qualified to evaluate and support deep-tech portfolio companies.
+built teams, closed enterprise pilots, and navigated pre-seed fundraising.
+
+Target role types (in priority order):
+1. VC/CVC investor or partner in deep-tech, hardware, AI, climate — ideal fit
+2. Founding or staff engineer at Seed–Series B deep-tech startups (hardware, AI, IoT, MEMS)
+3. Principal/lead research engineer applying PhD-level expertise in an industrial or startup context
+4. Technical sales / solutions / field application engineer bridging deep-tech R&D and customers
+   (FAE, Solutions Engineer, Sales Engineer in semiconductor, embedded AI, industrial IoT)
 """
 
 # ── Search queries (used across all scrapers) ────────────────────────────────
 SEARCH_QUERIES = [
+    # VC / CVC investor roles
     "venture capital investor deep tech",
     "venture capital partner hardware AI",
     "CVC investor technology",
@@ -60,6 +69,30 @@ SEARCH_QUERIES = [
     "venture capital associate industrial",
     "technology venture investor",
     "venture principal AI hardware",
+
+    # Founding / early-stage engineer (Seed–Series B)
+    "founding engineer deep tech startup",
+    "founding engineer hardware AI series A",
+    "early stage engineer Series B startup",
+    "staff engineer hardware startup",
+
+    # Research engineer / scientist
+    "principal research engineer AI hardware",
+    "staff research engineer machine learning",
+    "lead research engineer edge AI embedded",
+    "research engineer MEMS sensor",
+
+    # Technical sales / solutions
+    "technical sales engineer hardware AI",
+    "solutions engineer industrial IoT",
+    "sales engineer deep tech startup",
+    "technical account manager AI hardware",
+
+    # Field application engineer
+    "field application engineer semiconductor",
+    "field application engineer embedded AI",
+    "FAE hardware startup",
+    "application engineer MEMS IoT",
 ]
 
 # ── Wellfound / AngelList search terms ───────────────────────────────────────
@@ -67,6 +100,11 @@ WELLFOUND_QUERIES = [
     "venture capital",
     "investor deep tech",
     "CVC",
+    "founding engineer",
+    "hardware AI startup",
+    "field application engineer",
+    "technical sales engineer",
+    "research engineer",
 ]
 
 # ── VC-specific job board URLs ────────────────────────────────────────────────
