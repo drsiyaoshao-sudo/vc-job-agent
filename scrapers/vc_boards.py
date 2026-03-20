@@ -1,6 +1,6 @@
 """
 VC-specific job board scrapers.
-Covers: jobs.vc and direct firm career pages (configured in config.py).
+Covers: jobs.vc, NFX Guild, Venture Capital Careers, and direct firm career pages.
 
 Two-step approach for firm pages:
   1. Fetch the career landing page, extract candidate job-posting links
@@ -8,6 +8,7 @@ Two-step approach for firm pages:
 """
 from __future__ import annotations
 
+import json
 import logging
 from urllib.parse import urljoin, urlparse
 
@@ -65,7 +66,13 @@ def scrape_vc_boards() -> list[dict]:
         # 1. jobs.vc board
         all_jobs.extend(_scrape_jobs_vc(client, seen_urls))
 
-        # 2. Direct firm career pages (two-step: listing → individual posting)
+        # 2. NFX Guild job board (Next.js JSON)
+        all_jobs.extend(_scrape_nfx(client, seen_urls))
+
+        # 3. Venture Capital Careers board
+        all_jobs.extend(_scrape_vc_careers(client, seen_urls))
+
+        # 4. Direct firm career pages (two-step: listing → individual posting)
         for firm_config in TARGET_FIRM_URLS:
             firm = firm_config.get("firm", "Unknown Firm")
             url  = firm_config.get("url", "")
@@ -116,6 +123,157 @@ def _scrape_jobs_vc(client: httpx.Client, seen_urls: set) -> list[dict]:
             "posted_date": None,
         })
 
+    return jobs
+
+
+# ── NFX Guild job board ───────────────────────────────────────────────────────
+
+def _scrape_nfx(client: httpx.Client, seen_urls: set) -> list[dict]:
+    """
+    Scrape jobs.nfx.com — NFX Guild portfolio job board.
+    Jobs are embedded in __NEXT_DATA__ JSON; investor-keyword filter keeps only
+    relevant VC/investor roles.
+    """
+    jobs = []
+    base = "https://jobs.nfx.com"
+    try:
+        resp = client.get(f"{base}/jobs")
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"[nfx] Failed to fetch: {e}")
+        return jobs
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    nd = soup.find("script", id="__NEXT_DATA__")
+    if not nd:
+        logger.warning("[nfx] __NEXT_DATA__ not found")
+        return jobs
+
+    try:
+        state = json.loads(nd.string)["props"]["pageProps"]["initialState"]
+        raw_jobs = state.get("jobs", {}).get("found", [])
+    except (KeyError, json.JSONDecodeError) as e:
+        logger.warning(f"[nfx] Failed to parse JSON: {e}")
+        return jobs
+
+    for item in raw_jobs[:MAX_JOBS_PER_FIRM]:
+        title    = item.get("title", "")
+        job_url  = item.get("url", "")
+        org      = item.get("organization", {}) or {}
+        company  = org.get("name", "") if isinstance(org, dict) else ""
+        location = None
+        locs     = item.get("locations") or item.get("searchableLocations") or []
+        if locs and isinstance(locs[0], dict):
+            location = locs[0].get("city") or locs[0].get("name")
+        elif locs and isinstance(locs[0], str):
+            location = locs[0]
+
+        if not title or not job_url:
+            continue
+        if not any(kw in title.lower() for kw in INVESTOR_KEYWORDS):
+            continue
+        if job_url in seen_urls:
+            continue
+        seen_urls.add(job_url)
+
+        # Fetch the actual job description from the external URL
+        description = _fetch_job_description(client, job_url)
+
+        jobs.append({
+            "title":        title,
+            "company":      company or "NFX Portfolio Company",
+            "location":     location,
+            "url":          job_url,
+            "source":       "nfx",
+            "description":  description or None,
+            "salary_range": None,
+            "is_remote":    item.get("workMode", "").lower() == "remote",
+            "posted_date":  None,
+        })
+
+    logger.info(f"[nfx] {len(jobs)} investor-relevant jobs found")
+    return jobs
+
+
+# ── Venture Capital Careers board ─────────────────────────────────────────────
+
+def _scrape_vc_careers(client: httpx.Client, seen_urls: set) -> list[dict]:
+    """
+    Scrape venturecapitalcareers.com/jobs — a board dedicated to VC roles.
+    Job links follow the pattern /companies/{firm}/jobs/{slug}.
+    """
+    jobs = []
+    base = "https://venturecapitalcareers.com"
+    try:
+        resp = client.get(f"{base}/jobs")
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"[vcc] Failed to fetch: {e}")
+        return jobs
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Collect unique job links (pattern: /companies/.../jobs/...)
+    seen_slugs: set[str] = set()
+    candidates: list[tuple[str, str]] = []
+    for a in soup.select("a[href]"):
+        href = a.get("href", "")
+        if "/jobs/" not in href or "/companies/" not in href:
+            continue
+        slug = href.split("#")[0]
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        title = a.get_text(strip=True)
+        if title and len(title) < 120:
+            candidates.append((title, f"{base}{slug}" if slug.startswith("/") else slug))
+
+    for title, job_url in candidates[:MAX_JOBS_PER_FIRM]:
+        if job_url in seen_urls:
+            continue
+        seen_urls.add(job_url)
+
+        # Extract company slug from URL: /companies/{slug}/jobs/...
+        parts = job_url.split("/companies/")
+        company_slug = parts[1].split("/")[0] if len(parts) > 1 else ""
+        company = company_slug.replace("-", " ").title() if company_slug else "Unknown"
+
+        description, location = None, None
+        try:
+            detail = client.get(job_url, timeout=15)
+            if detail.status_code == 200:
+                dsoup = BeautifulSoup(detail.text, "html.parser")
+                # Title from page <title>: "Job Title at Company Name • Location"
+                page_title = dsoup.find("title")
+                if page_title:
+                    pt = page_title.get_text(strip=True)
+                    if " at " in pt:
+                        title   = pt.split(" at ")[0].strip()
+                        company = pt.split(" at ")[1].split("•")[0].strip()
+                        loc_part = pt.split("•")
+                        if len(loc_part) > 1:
+                            location = loc_part[1].strip()
+                for tag in dsoup(["script", "style", "nav", "header", "footer"]):
+                    tag.decompose()
+                main = dsoup.find("main") or dsoup.find("body")
+                if main:
+                    description = main.get_text(separator=" ", strip=True)[:5000]
+        except Exception:
+            pass
+
+        jobs.append({
+            "title":        title,
+            "company":      company,
+            "location":     location,
+            "url":          job_url,
+            "source":       "vc_careers",
+            "description":  description,
+            "salary_range": None,
+            "is_remote":    None,
+            "posted_date":  None,
+        })
+
+    logger.info(f"[vcc] {len(jobs)} jobs found")
     return jobs
 
 
