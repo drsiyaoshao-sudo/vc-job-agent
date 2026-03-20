@@ -23,7 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from database import Job, JobStatus, create_db, get_session, upsert_job
 from notifier import send_health_check, send_weekly_report
-from scrapers import scrape_mainstream, scrape_vc_boards, scrape_wellfound
+from scrapers import scrape_gmail_alerts, scrape_mainstream, scrape_vc_boards, scrape_wellfound
 from scorer import rescore_job, score_unscored_jobs
 
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +129,7 @@ def _run_scrape(session_factory):
         all_jobs.extend(scrape_mainstream())
         all_jobs.extend(scrape_wellfound())
         all_jobs.extend(scrape_vc_boards())
+        all_jobs.extend(scrape_gmail_alerts())
 
         with session_factory() as session:
             for job_data in all_jobs:
@@ -299,6 +300,38 @@ def trigger_weekly_report(background_tasks: BackgroundTasks):
     """Manually trigger the weekly digest email (useful for testing)."""
     background_tasks.add_task(send_weekly_report)
     return JSONResponse({"status": "sending"})
+
+
+@app.post("/api/gmail-check")
+def trigger_gmail_check(background_tasks: BackgroundTasks):
+    """Manually pull and ingest unread LinkedIn job alert emails from Gmail."""
+    if scrape_status["running"]:
+        return JSONResponse({"status": "already_running"})
+
+    def _run_gmail():
+        from database import engine
+        from sqlmodel import Session as S
+        scrape_status["running"] = True
+        total_new = 0
+        try:
+            jobs = scrape_gmail_alerts()
+            with S(engine) as session:
+                for job_data in jobs:
+                    _, created = upsert_job(session, job_data)
+                    if created:
+                        total_new += 1
+                scored = score_unscored_jobs(session)
+            scrape_status["last_count"] = total_new
+            scrape_status["last_scored"] = scored
+            logger.info(f"Gmail check complete: {total_new} new jobs, {scored} scored")
+        except Exception as e:
+            logger.error(f"Gmail check failed: {e}")
+        finally:
+            scrape_status["running"] = False
+            scrape_status["last_run"] = datetime.utcnow().isoformat()
+
+    background_tasks.add_task(_run_gmail)
+    return JSONResponse({"status": "started"})
 
 
 @app.post("/api/jobs/{job_id}/update")

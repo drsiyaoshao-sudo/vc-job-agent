@@ -79,6 +79,16 @@
           </svg>
           <span x-text="status.running ? 'Scoring…' : 'Score Unscored'"></span>
         </button>
+        <button @click="checkGmail()"
+          :disabled="status.running"
+          class="w-full flex items-center justify-center gap-2 px-3 py-2 mt-2 rounded-lg text-sm font-medium
+            bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          <span x-text="status.running ? 'Checking…' : 'Check Gmail'"></span>
+        </button>
         <template x-if="status.last_run">
           <p class="text-gray-500 text-xs mt-2 text-center">
             Last: <span x-text="formatTime(status.last_run)"></span>
@@ -119,6 +129,10 @@
         },
         async startScore() {
           await fetch('/api/score', { method: 'POST' });
+          this.status.running = true;
+        },
+        async checkGmail() {
+          await fetch('/api/gmail-check', { method: 'POST' });
           this.status.running = true;
         },
         formatTime(iso) {
