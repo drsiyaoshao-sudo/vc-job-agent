@@ -2,6 +2,10 @@
 VC Job Agent — FastAPI application.
 Run with: uvicorn main:app --reload
 """
+# load_dotenv FIRST — must run before any module that reads env vars at import time
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -9,7 +13,6 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Optional
 
-from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +26,6 @@ from notifier import send_health_check, send_weekly_report
 from scrapers import scrape_mainstream, scrape_vc_boards, scrape_wellfound
 from scorer import rescore_job, score_unscored_jobs
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

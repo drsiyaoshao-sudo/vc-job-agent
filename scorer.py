@@ -16,10 +16,9 @@ from sqlmodel import Session, select
 from config import PROFILE
 from database import Job
 from notifier import notify_job
+from scorer_fallback import score_job_fallback
 
 logger = logging.getLogger(__name__)
-
-client = anthropic.Anthropic()
 
 SYSTEM_PROMPT = f"""You are a career advisor helping Dr. Siyao Shao evaluate job postings for
 Venture Capital investor and partner roles. Your job is to score how well a posting fits his
@@ -68,6 +67,7 @@ def score_job(job: Job) -> JobMatchResult | None:
         )
 
     try:
+        client = anthropic.Anthropic()
         response = client.messages.parse(
             model="claude-opus-4-6",
             max_tokens=4096,
@@ -78,8 +78,20 @@ def score_job(job: Job) -> JobMatchResult | None:
         result: JobMatchResult = response.parsed_output
         return result
     except Exception as e:
-        logger.error(f"[scorer] Failed to score job {job.id} ({job.title}): {e}")
-        return None
+        logger.warning(f"[scorer] Claude failed for job {job.id} ({job.title}): {e} — using fallback scorer")
+        fb = score_job_fallback(
+            title=job.title,
+            company=job.company,
+            description=job.description,
+            location=job.location,
+        )
+        return JobMatchResult(
+            score=fb["score"],
+            headline=fb["headline"] + " [fallback]",
+            pros=fb["pros"],
+            cons=fb["cons"],
+            key_requirements=fb["key_requirements"],
+        )
 
 
 def score_unscored_jobs(session: Session) -> int:
@@ -104,8 +116,11 @@ def score_unscored_jobs(session: Session) -> int:
             count += 1
             logger.info(f"[scorer] Scored '{job.title}' at {job.company}: {result.score}/100")
 
-            # Fire notifications based on score (WhatsApp >90, email >75)
-            notify_job(job)
+            # Fire notifications — never let a notification failure crash the scoring loop
+            try:
+                notify_job(job)
+            except Exception as notify_err:
+                logger.warning(f"[scorer] Notification failed for job {job.id}: {notify_err}")
 
     return count
 
