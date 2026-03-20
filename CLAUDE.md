@@ -140,3 +140,25 @@ TARGET_FIRM_URLS = [
 ```
 
 The scraper visits each URL, finds investor-role links, and returns up to 20 jobs per page.
+
+## Running Locally
+
+This app runs on **port 8000**. If running a second FastAPI app on the same machine, use a different port to avoid conflicts:
+
+```bash
+uvicorn main:app --reload --port 8000          # this app
+uvicorn other_app:app --reload --port 8001     # second app
+```
+
+The LaunchAgent also binds to port 8000 (see `~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist`).
+
+## Backlog
+
+### [BACKLOG] Nginx reverse proxy for multi-app hosting
+Currently using separate ports (8000, 8001) when running two FastAPI apps on the same machine.
+**Future improvement:** put nginx in front as a reverse proxy so both apps are reachable on port 80
+without port numbers in the URL, with a single SSL termination point.
+- Route `/jobs/` → job-agent on 8000
+- Route `/other/` → second app on 8001
+- Enables HTTPS via a single cert (Let's Encrypt / certbot)
+- Useful when sharing URLs externally or deploying to a VPS
