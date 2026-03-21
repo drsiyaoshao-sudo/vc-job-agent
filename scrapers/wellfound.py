@@ -41,7 +41,7 @@ def scrape_wellfound() -> list[dict]:
 
 def _fetch_wellfound_page(client: httpx.Client, query: str, seen_urls: set) -> list[dict]:
     jobs = []
-    url = f"https://wellfound.com/jobs?q={query.replace(' ', '+')}&role=investor"
+    url = f"https://wellfound.com/jobs?q={query.replace(' ', '+')}"
     try:
         resp = client.get(url)
         resp.raise_for_status()
