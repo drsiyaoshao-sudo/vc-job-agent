@@ -28,11 +28,30 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-# Link text must contain at least one of these to be considered a job posting
+# Link text must contain at least one of these to be considered a job posting.
+# Covers all 4 target role types: VC/investor, founding/staff engineer,
+# research engineer, and FAE/technical sales.
 INVESTOR_KEYWORDS = {
+    # VC / investor roles
     "venture", "investor", "investment", "associate", "principal",
     "partner", "cvc", "deal", "thesis", "fund", "analyst", "scout",
     "sourcing", "capital", "equity", "portfolio manager",
+    # Founding / early-stage engineer roles
+    "founding engineer", "founding software", "founding hardware",
+    "staff engineer", "staff software", "staff hardware",
+    "early stage engineer", "early-stage engineer",
+    "senior engineer", "lead engineer", "principal engineer",
+    "software engineer", "hardware engineer", "systems engineer",
+    # Research engineer roles
+    "research engineer", "research scientist", "principal scientist",
+    "staff scientist", "mems", "embedded", "edge ai",
+    # FAE / technical sales roles
+    "field application", "fae", "solutions engineer", "solutions architect",
+    "technical sales", "sales engineer", "pre-sales", "application engineer",
+    # EIR / operator roles at funds
+    "entrepreneur in residence", "eir",
+    # Startup stage signals (found in portfolio job descriptions)
+    "series a", "series b", "seed stage", "startup",
 }
 
 # URL path segments that indicate a specific job posting page
@@ -112,7 +131,7 @@ def _scrape_jobs_vc(client: httpx.Client, seen_urls: set) -> list[dict]:
             continue
         seen_urls.add(job_url)
         jobs.append({
-            "title":       text or "VC Role",
+            "title":       text or "Job Role",
             "company":     "Unknown",
             "location":    None,
             "url":         job_url,
@@ -131,8 +150,8 @@ def _scrape_jobs_vc(client: httpx.Client, seen_urls: set) -> list[dict]:
 def _scrape_nfx(client: httpx.Client, seen_urls: set) -> list[dict]:
     """
     Scrape jobs.nfx.com — NFX Guild portfolio job board.
-    Jobs are embedded in __NEXT_DATA__ JSON; investor-keyword filter keeps only
-    relevant VC/investor roles.
+    Jobs are embedded in __NEXT_DATA__ JSON; keyword filter keeps only
+    relevant roles (VC/investor, founding eng, research eng, FAE/sales).
     """
     jobs = []
     base = "https://jobs.nfx.com"
@@ -370,7 +389,7 @@ def _scrape_firm_page(
         if not _is_job_posting_url(href, base_url):
             continue
 
-        # Must mention an investor role somewhere in the link text
+        # Must mention a target role keyword in the link text (VC, eng, FAE, research, etc.)
         if not any(kw in tl for kw in INVESTOR_KEYWORDS):
             continue
 

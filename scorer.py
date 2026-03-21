@@ -40,9 +40,10 @@ SCORING RUBRIC (0–100):
           principal research engineer in MEMS/edge AI; FAE at semiconductor company.
 - 65–84:  Good — fits a target type with minor gaps (slightly off domain, seniority, or location).
           Examples: VC associate in adjacent domain; senior engineer at Series C+ startup;
-          solutions engineer in adjacent sector; research engineer without senior title.
-- 45–64:  Moderate — adjacent or transferable (EIR, tech scout, product engineer, corporate R&D,
-          innovation manager).
+          solutions engineer in adjacent sector; research engineer without senior title;
+          EIR at a VC/CVC fund or deep-tech accelerator/studio.
+- 45–64:  Moderate — adjacent or transferable (tech scout, product engineer, corporate R&D,
+          innovation manager, EIR at non-VC corporate).
 - 20–44:  Weak — general engineering without deep-tech, startup, or investor angle.
 - 0–19:   Not relevant — unrelated to any of the 4 target types.
 

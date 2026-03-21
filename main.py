@@ -21,7 +21,7 @@ from sqlmodel import Session, select
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from database import Job, JobStatus, create_db, get_session, upsert_job
+from database import Job, JobStatus, UserSettings, create_db, get_session, get_settings, upsert_job
 from notifier import send_health_check, send_weekly_report
 from scrapers import scrape_gmail_alerts, scrape_mainstream, scrape_vc_boards, scrape_wellfound
 from scorer import rescore_job, score_unscored_jobs
@@ -182,8 +182,10 @@ def dashboard(
 
     # Stats
     all_jobs = session.exec(select(Job)).all()
+    _settings = get_settings(session)
     stats = {
         "total": len(all_jobs),
+        "total_ever": _settings.total_jobs_ever,
         "new": sum(1 for j in all_jobs if j.status == JobStatus.NEW),
         "applied": sum(1 for j in all_jobs if j.status == JobStatus.APPLIED),
         "interview": sum(1 for j in all_jobs if j.status == JobStatus.INTERVIEW),
@@ -430,6 +432,47 @@ def delete_job(
     session.delete(job)
     session.commit()
     return JSONResponse({"status": "deleted"})
+
+
+@app.post("/api/flush")
+def flush_jobs(session: Session = Depends(get_session)):
+    """
+    Delete 'new' (untouched) jobs in two passes:
+      1. Scored below 50 — not worth reviewing
+      2. Scraped more than 14 days ago with no action taken
+    Never deletes jobs with status other than 'new'.
+    """
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=14)
+
+    low_score = session.exec(
+        select(Job).where(
+            Job.status == JobStatus.NEW,
+            Job.match_score != None,  # noqa: E711
+            Job.match_score < 50,
+        )
+    ).all()
+
+    stale = session.exec(
+        select(Job).where(
+            Job.status == JobStatus.NEW,
+            Job.scraped_at < cutoff,
+        )
+    ).all()
+
+    # Deduplicate (a job may qualify for both passes)
+    to_delete = {j.id: j for j in low_score}
+    to_delete.update({j.id: j for j in stale})
+
+    for job in to_delete.values():
+        session.delete(job)
+    session.commit()
+
+    return JSONResponse({
+        "deleted": len(to_delete),
+        "low_score": len(low_score),
+        "stale": len(stale),
+    })
 
 
 @app.get("/api/stats")

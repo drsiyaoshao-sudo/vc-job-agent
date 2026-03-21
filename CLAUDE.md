@@ -1,149 +1,207 @@
-# VC Job Agent — Developer Notes
+# Job Search Agent — Master Document
 
-## Project Purpose
+## Design Philosophy
 
-Personal AI-powered job search agent for **Dr. Siyao Shao**. Scrapes job boards on a schedule,
-scores every listing against his profile using Claude Opus 4.6 (with a keyword fallback scorer),
-and sends smart notifications.
+**The system reads the candidate. The candidate does not fit the system.**
 
-**Target role types** (in priority order):
-1. VC/CVC investor or partner — deep-tech, hardware, AI, climate
-2. Founding / staff engineer at Seed–Series B deep-tech startups
-3. Principal / lead research engineer (MEMS, edge AI, embedded, industrial)
-4. Technical sales / FAE / solutions engineer in hardware, semiconductor, industrial IoT
+Most job boards ask you to compress yourself into a category. This agent inverts that contract:
+it starts from Siyao's actual credentials — deep-tech PhD, MEMS researcher, TandemLaunch EIR,
+hardware startup operator — and asks *which roles fit him*, scoring each one accordingly.
+
+Three operating principles flow from this:
+
+**1. Profile is runtime, not compile-time.**
+`resume_text` and `job_anticipations` load fresh from the DB on every scoring call. Edit targets
+in the UI; the next scrape reflects the change immediately. No redeploy, no file edit.
+
+**2. Scoring rubric is readable business logic.**
+The 4-bucket rubric lives in plain English inside the Claude system prompt and in
+`scorer_fallback.py`. When priorities shift (EIR is a good role; FAE is a primary target, not
+adjacent), one line changes and the entire scoring pipeline updates.
+
+**3. Efficiency is first-class.**
+20-job hard cap per scraper. Keyword fallback runs in microseconds with no API cost. Flush
+removes low-score and stale jobs automatically. `total_jobs_ever` preserves lifetime history
+without keeping junk rows. SQLite + one process + no vector DB — stays deployable on a MacBook.
+
+---
+
+## Target Role Types
+
+All four are primary targets — scored 65–100 when domain/seniority align:
+
+| # | Role Type | Examples |
+|---|-----------|---------|
+| 1 | **VC/CVC investor or partner** | deep-tech, hardware, AI, climate; Associate → Partner |
+| 2 | **Founding / staff engineer** | Seed–Series B deep-tech startups (hardware, AI, IoT, MEMS) |
+| 3 | **Principal / lead research engineer** | MEMS, edge AI, embedded systems, industrial tech |
+| 4 | **FAE / Solutions / Technical Sales Engineer** | hardware, semiconductor, industrial IoT, AI |
+
+**Also primary:** EIR (Entrepreneur in Residence) at VC/CVC funds and deep-tech accelerators/studios.
+
+---
 
 ## Architecture
 
 ```
 main.py               — FastAPI app + APScheduler (scrape 4×/day, health check daily, digest weekly)
 config.py             — Profile, SEARCH_QUERIES, WELLFOUND_QUERIES, TARGET_FIRM_URLS, thresholds
-database.py           — SQLModel: Job table + UserSettings table + upsert_job() + get_settings()
+database.py           — SQLModel: Job + UserSettings; upsert_job(); alter_db() for migrations
 scorer.py             — Claude Opus 4.6 scoring via messages.parse() + Pydantic JobMatchResult
-                        Falls back to scorer_fallback.py on API failure
+                        Falls back to scorer_fallback.py on any API failure
 scorer_fallback.py    — Keyword + TF-IDF fallback scorer (no API, always works)
-profile.py            — Dynamic profile loader: get_profile_text(), get_search_queries()
+profile.py            — Runtime profile loader: get_profile_text(), get_search_queries()
 notifier.py           — WhatsApp (CallMeBot), Gmail SMTP, health-check and weekly digest emails
 scrapers/
-  jobspy.py           — LinkedIn/Indeed via python-jobspy (requires Python 3.10+)
-  wellfound.py        — Wellfound / AngelList scraper
+  jobspy.py           — LinkedIn/Indeed via python-jobspy (requires Python 3.10+; subprocess fallback)
+  wellfound.py        — Disabled (Cloudflare blocks scraping); returns []
   vc_boards.py        — jobs.vc + NFX + VC Careers + direct firm career pages
-  gmail_alerts.py     — Gmail IMAP: reads LinkedIn job alert emails, extracts job listings
-health_monitor.py     — 24-hour polling script to verify scheduled scrapes fire on time
-tdk_check.py          — Standalone health-check: scrapes TDK Ventures and scores with Claude
+  gmail_alerts.py     — Gmail IMAP: reads LinkedIn job alert emails, extracts listings
+health_monitor.py     — 24-hour polling script; writes PASS/PARTIAL/FAIL to health_monitor.log
+tdk_check.py          — Standalone end-to-end health check: scrapes TDK Ventures + scores
 ```
 
-## Scraping Pipeline — Order of Execution
+---
 
-Each scheduled scrape runs four stages:
+## Plan → Execute → Operate Workflow
+
+### Plan (before any change)
+
+Ask: *does this belong in the candidate's profile (runtime, DB) or in the scraper/scorer architecture (code)?*
+
+- **Preference shift** (new role type, domain, seniority level, location) → edit `UserSettings` via `/settings` UI. No code change needed.
+- **New scrape source** → add URL to `TARGET_FIRM_URLS` in `config.py`. The existing pipeline picks it up.
+- **Scoring calibration** → edit `TITLE_SIGNALS` / `DOMAIN_GROUPS` in `scorer_fallback.py` and the rubric in `scorer.py`. Rescore via sidebar "Score Unscored" button.
+- **Schema change** → add column to `UserSettings` or `Job` in `database.py`, add migration in `alter_db()`, call `alter_db()` inside `create_db()`.
+
+### Execute (making the change)
+
+1. All Python files must start with `from __future__ import annotations` (Python 3.9 constraint).
+2. Never bypass `alter_db()` for schema changes — existing installs must migrate without data loss.
+3. Every new scraper must deduplicate by URL and enforce the 20-job hard cap.
+4. Claude scorer always has a fallback path — never let an API failure block a scrape run.
+5. Restart the LaunchAgent after any `main.py` or `scorer.py` change (in-memory state resets):
+   ```bash
+   launchctl unload ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
+   launchctl load  ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
+   ```
+
+### Operate (day-to-day)
+
+| Action | How |
+|--------|-----|
+| Update resume / targets | `/settings` UI → save → takes effect on next score call |
+| Trigger scrape manually | Sidebar "Scrape Jobs" button |
+| Re-score existing jobs | Sidebar "Score Unscored" button |
+| Check Gmail alerts | Sidebar "Check Gmail" button |
+| Remove low-signal noise | Sidebar "Flush Low-Score" button — deletes `status=new` jobs scored <50 or scraped >14 days ago |
+| Add a target firm | `TARGET_FIRM_URLS` in `config.py`, restart app |
+| View lifetime job count | Dashboard "Ever Found" stat card (persists across flushes) |
+
+---
+
+## Scraping Pipeline
+
+Each scheduled scrape (4×/day) runs four stages in order:
 
 1. **LinkedIn / Indeed** (`scrapers/jobspy.py`)
-   - Searches via `SEARCH_QUERIES` in `config.py` (26 queries across VC, founding eng, FAE, tech sales, research)
-   - **Hard cap: 20 results per query**
-   - Requires Python 3.10+; falls back gracefully on Python 3.9
+   - Searches via `SEARCH_QUERIES` in `config.py` (covers all 4 role types)
+   - Hard cap: 20 results per query
+   - Requires Python 3.10+; runs via `jobspy310` conda env subprocess on Python 3.9
 
 2. **Wellfound** (`scrapers/wellfound.py`)
-   - Uses `WELLFOUND_QUERIES` from `config.py`
-   - **Hard cap: 20 jobs per query**
+   - Currently disabled — Cloudflare blocks automated access
+   - Returns `[]`; kept in pipeline for future re-enablement
 
-3. **VC-specific boards + direct firm pages** (`scrapers/vc_boards.py`)
+3. **VC boards + direct firm pages** (`scrapers/vc_boards.py`)
    - jobs.vc, NFX Guild, Venture Capital Careers boards
    - Direct career pages for all firms in `TARGET_FIRM_URLS`
-   - **Hard cap: 20 jobs per source/firm**
+   - `INVESTOR_KEYWORDS` filter covers all 4 role types + EIR (not just VC titles)
+   - Hard cap: 20 jobs per source/firm
 
 4. **Gmail LinkedIn alerts** (`scrapers/gmail_alerts.py`)
-   - Connects to `imap.gmail.com:993` using `GMAIL_USER` + `GMAIL_APP_PASS`
-   - Searches `[Gmail]/All Mail` for emails from `jobs-noreply@linkedin.com` and `jobalerts-noreply@linkedin.com`
-   - Skips application-status emails (subject filter)
+   - IMAP to `imap.gmail.com:993`; reads emails from LinkedIn jobs-noreply addresses
    - Lookback: 7 days; cap: 50 emails, 20 jobs per email
 
-All stages deduplicate by URL before DB insertion.
+All stages deduplicate by URL. `upsert_job()` increments `UserSettings.total_jobs_ever` on each new insertion.
 
-## Scraper Job Caps
-
-Every scraper enforces a **maximum of 20 jobs per source/query**:
-- Controls Claude API scoring costs (each scored job = 1 API call)
-- Keeps each scheduled run under ~5 minutes
-- Avoids overwhelming the dashboard with low-signal results
-
-To change: update `RESULTS_PER_QUERY` in `config.py` (jobspy) and `[:20]` slice guards in `wellfound.py` and `vc_boards.py`.
+---
 
 ## Scoring
 
 ### Claude scorer (`scorer.py`)
 - Model: `claude-opus-4-6` with `thinking={"type": "adaptive"}`
 - Structured output via `client.messages.parse()` + Pydantic `JobMatchResult`
-- Each job gets: `score` (0–100), `headline`, `pros`, `cons`, `key_requirements`
-- Descriptions truncated to 6,000 characters
-- Profile loaded dynamically from `UserSettings` DB row via `profile.get_profile_text()`
-- On any Claude failure → falls back to keyword scorer
+- Each job: `score` (0–100), `headline`, `pros`, `cons`, `key_requirements`
+- Description truncated to 6,000 characters; profile loaded fresh from `UserSettings` per call
+- Any failure → automatic fallback to keyword scorer
 
 ### Keyword fallback scorer (`scorer_fallback.py`)
-- No API dependency — always works
+- No API dependency — always runs
 - Three layers: title keywords (0–45 pts) + domain keywords (0–35 pts) + TF-IDF cosine (0–20 pts)
-- MD5-keyed vector cache; respects dynamic profile changes
-- Activated automatically when Claude is unavailable or via `scorer_method = "keyword"` in settings
+- MD5-keyed vector cache per unique profile text
 
-**Score rubric:**
+### Score rubric
 
-| Range  | Label        | Meaning                                                                                      |
-|--------|--------------|----------------------------------------------------------------------------------------------|
-| 85–100 | Excellent    | VC/CVC investor/partner in deep-tech/hardware/AI/climate; OR founding/staff engineer at deep-tech Seed–Series B |
-| 65–84  | Good         | VC/CVC slightly off domain/seniority; principal research engineer; FAE/solutions/tech sales in hardware or AI |
-| 45–64  | Moderate     | Adjacent role: EIR, tech scout, product engineer, corporate innovation, research scientist    |
-| 20–44  | Weak         | Generic engineering role without deep-tech or startup angle                                  |
-| 0–19   | Not relevant | Unrelated to Siyao's background                                                              |
+| Range  | Label        | Meaning |
+|--------|--------------|---------|
+| 85–100 | Excellent    | Squarely fits one of the 4 target types; domain and seniority align |
+| 65–84  | Good         | Fits a target type with minor gaps; EIR at VC/CVC fund or deep-tech studio |
+| 45–64  | Moderate     | Adjacent / transferable: tech scout, product engineer, corporate R&D, EIR at non-VC |
+| 20–44  | Weak         | Generic engineering without deep-tech or startup angle |
+| 0–19   | Not relevant | Unrelated to Siyao's background |
 
-**Notification thresholds** (set in `notifier.py`, overridable in DB `UserSettings`):
-- Score ≥ 90 → instant WhatsApp alert (CallMeBot)
-- Score ≥ 75 → instant email alert (Gmail SMTP)
+### Notification thresholds
+- Score ≥ 90 → instant WhatsApp (CallMeBot)
+- Score ≥ 75 → instant email (Gmail SMTP)
 
-## User Settings (Web UI)
+---
 
-Visit `/settings` to update without editing files:
-- **Profile Identity** — name
-- **Resume / Profile** — full resume text used by Claude and fallback scorer
-- **Job Targets** — target titles (one per line) and free-text anticipations
+## Database
 
-Changes take effect on the next scrape/score run. Profile is loaded fresh per scoring call.
+`UserSettings` — single-row config table. Fields that drive runtime behavior:
+
+| Field | Purpose |
+|-------|---------|
+| `resume_text` | Full resume; sent to Claude and used by fallback TF-IDF |
+| `target_titles` | JSON list; generates search queries |
+| `job_anticipations` | Free text; appended to Claude system prompt |
+| `total_jobs_ever` | Lifetime insertion counter; survives flush operations |
+
+Schema migrations: add column + default in `alter_db()` inside `database.py`, never via ORM auto-migrate.
+
+---
 
 ## Python Version Constraint
 
-The project runs on **Python 3.9.7 (Anaconda)**. All files using union type hints must include:
+Runs on **Python 3.9.7 (Anaconda base)**. Every file must include:
 
 ```python
 from __future__ import annotations
 ```
 
-at the very top (after the module docstring, before other imports). The `str | None` syntax is a
-runtime error on Python 3.9 without this.
+at the top. `str | None` union syntax is a runtime error on 3.9 without it.
 
-`python-jobspy` requires Python 3.10+. Handled with a try/except ImportError that returns `[]`.
+`python-jobspy` requires Python 3.10+ → runs via `~/opt/anaconda3/envs/jobspy310/bin/python` subprocess.
+
+---
 
 ## Environment Variables
 
-All secrets in `.env` (gitignored):
+Secrets in `.env` (gitignored):
 
 ```
-ANTHROPIC_API_KEY      — Anthropic API key (use the "my-second-key" ending EAAA)
-CALLMEBOT_PHONE        — WhatsApp phone number with country code, no + (e.g. 14388850126)
-CALLMEBOT_APIKEY       — CallMeBot API key (activate by messaging +34 644 59 79 13 on WhatsApp)
-GMAIL_USER             — Gmail address (dr.siyaoshao@gmail.com)
-GMAIL_APP_PASS         — Gmail App Password (not the account password)
-NOTIFY_EMAIL           — Destination email for alerts and digests
+ANTHROPIC_API_KEY      — Anthropic API key
+CALLMEBOT_PHONE        — WhatsApp phone with country code, no +
+CALLMEBOT_APIKEY       — CallMeBot API key
+GMAIL_USER             — Gmail address
+GMAIL_APP_PASS         — Gmail App Password
+NOTIFY_EMAIL           — Destination for alerts and digests
 ```
 
-## Running Locally
-
-This app runs on **port 8000**. If running a second FastAPI app on the same machine, use a different port:
-
-```bash
-uvicorn main:app --reload --port 8000          # this app
-uvicorn other_app:app --reload --port 8001     # second app
-```
+---
 
 ## Background Service (macOS)
-
-The agent runs as a LaunchAgent — starts on login, restarts on crash, binds to port 8000.
 
 ```bash
 # Start
@@ -156,23 +214,21 @@ launchctl unload ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
 tail -f ~/job-agent/agent.log
 ```
 
-## Health Monitor
+App runs on **port 8000**. Second app on same machine → use port 8001.
 
-`health_monitor.py` polls `/api/scrape-status` every 30 min for 24 hours and writes a structured
-log to `health_monitor.log`. Detects whether scheduled scrapes fire and complete successfully.
+---
+
+## Health Checks
 
 ```bash
+# 24-hour pipeline monitor (PASS / PARTIAL / FAIL verdict)
 python3 health_monitor.py
-# Writes verdict (PASS / PARTIAL / FAIL) to health_monitor.log
-```
 
-`tdk_check.py` is a quicker standalone check — scrapes TDK Ventures and scores with Claude to
-verify the full pipeline is working end-to-end.
-
-```bash
+# Quick end-to-end check: scrape TDK Ventures + score with Claude
 python3 tdk_check.py
-# Output written to tdk_healthcheck.log
 ```
+
+---
 
 ## Adding Target Firms
 
@@ -182,15 +238,12 @@ Edit `TARGET_FIRM_URLS` in `config.py`:
 {"firm": "Lux Capital", "url": "https://www.luxcapital.com/careers"},
 ```
 
-The scraper visits each URL, finds investor-role links, and returns up to 20 jobs per page.
+The scraper visits the URL, follows links matching `INVESTOR_KEYWORDS`, and returns up to 20 jobs.
+
+---
 
 ## Backlog
 
-### [BACKLOG] Nginx reverse proxy for multi-app hosting
-Currently using separate ports (8000, 8001) when running two FastAPI apps on the same machine.
-**Future improvement:** nginx reverse proxy so both apps are reachable on port 80, with a single
-SSL termination point.
-- Route `/jobs/` → job-agent on 8000
-- Route `/other/` → second app on 8001
-- Enables HTTPS via a single cert (Let's Encrypt / certbot)
-- Useful when sharing URLs externally or deploying to a VPS
+### [BACKLOG] Nginx reverse proxy
+Route `/jobs/` → port 8000 and a second app → port 8001 under a single SSL cert.
+Useful for external sharing or VPS deployment.

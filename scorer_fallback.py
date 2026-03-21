@@ -73,7 +73,7 @@ TITLE_SIGNALS: list[tuple[list[str], int, str, str]] = [
     (["partner"],                                                              40, "Partner-level VC role",       "vc"),
     (["principal"],                                                            30, "Principal-level VC role",     "vc"),
     (["associate", "analyst"],                                                 28, "Associate/Analyst role",      "vc"),
-    (["eir", "entrepreneur in residence"],                                     25, "EIR role",                    "vc"),
+    (["eir", "entrepreneur in residence"],                                     38, "EIR role",                    "vc"),
     (["technology scout", "tech scout", "deal sourcing"],                      22, "Scout/Sourcing role",         "vc"),
     (["innovation", "technology strategy", "corporate development"],           15, "Innovation/Strategy role",    "vc"),
 ]
@@ -117,6 +117,7 @@ CORE_SIGNALS = [
     # VC/investor
     "venture", "investment", "investor", "capital", "fund", "portfolio",
     "associate", "principal", "partner", "analyst",
+    "eir", "entrepreneur in residence",
     # Founding / early-stage
     "founding", "seed", "series a", "series b", "early stage", "early-stage",
     "startup",

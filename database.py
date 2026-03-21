@@ -7,7 +7,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select, text
 
 DATABASE_URL = "sqlite:///./jobs.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -62,10 +62,24 @@ class UserSettings(SQLModel, table=True):
     target_titles: str = Field(default="[]")      # JSON list[str] of target job titles
     job_anticipations: str = Field(default="")    # free-text: domains, preferences, seniority
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    total_jobs_ever: int = Field(default=0)       # lifetime count; preserved across flushes
+
+
+def alter_db():
+    """Add new columns to existing tables without dropping data."""
+    with engine.connect() as conn:
+        existing = [r[1] for r in conn.execute(text("PRAGMA table_info(usersettings)"))]
+        if "total_jobs_ever" not in existing:
+            conn.execute(text("ALTER TABLE usersettings ADD COLUMN total_jobs_ever INTEGER DEFAULT 0"))
+            # Initialise to current job count so the lifetime total is correct from migration
+            count = conn.execute(text("SELECT COUNT(*) FROM job")).scalar() or 0
+            conn.execute(text(f"UPDATE usersettings SET total_jobs_ever = {count}"))
+        conn.commit()
 
 
 def create_db():
     SQLModel.metadata.create_all(engine)
+    alter_db()
 
 
 def get_session():
@@ -104,6 +118,7 @@ def upsert_job(session: Session, job_data: dict) -> tuple[Job, bool]:
     """
     Insert a new job or skip if URL already exists.
     Returns (job, created) where created=True if it was newly inserted.
+    Increments UserSettings.total_jobs_ever on each new insertion.
     """
     existing = session.exec(select(Job).where(Job.url == job_data["url"])).first()
     if existing:
@@ -111,6 +126,13 @@ def upsert_job(session: Session, job_data: dict) -> tuple[Job, bool]:
 
     job = Job(**job_data)
     session.add(job)
+
+    # Increment lifetime counter
+    settings = session.exec(select(UserSettings)).first()
+    if settings:
+        settings.total_jobs_ever += 1
+        session.add(settings)
+
     session.commit()
     session.refresh(job)
     return job, True

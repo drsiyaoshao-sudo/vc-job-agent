@@ -97,6 +97,17 @@
           </svg>
           <span x-text="status.running ? 'Checking…' : 'Check Gmail'"></span>
         </button>
+        <button @click="flushJobs()"
+          :disabled="status.running"
+          class="w-full flex items-center justify-center gap-2 px-3 py-2 mt-2 rounded-lg text-sm font-medium
+            bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Remove low-score (&lt;50) and stale (&gt;14 days) untouched jobs">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+          <span x-text="flushResult || 'Flush Low-Score'"></span>
+        </button>
         <template x-if="status.last_run">
           <p class="text-gray-500 text-xs mt-2 text-center">
             Last: <span x-text="formatTime(status.last_run)"></span>
@@ -118,6 +129,7 @@
     function scrapePoller() {
       return {
         status: {{ scrape_status | tojson }},
+        flushResult: null,
         init() {
           this.poll();
         },
@@ -142,6 +154,12 @@
         async checkGmail() {
           await fetch('/api/gmail-check', { method: 'POST' });
           this.status.running = true;
+        },
+        async flushJobs() {
+          const res = await fetch('/api/flush', { method: 'POST' });
+          const data = await res.json();
+          this.flushResult = `Flushed ${data.deleted}`;
+          setTimeout(() => { this.flushResult = null; window.location.reload(); }, 2000);
         },
         formatTime(iso) {
           if (!iso) return '';
