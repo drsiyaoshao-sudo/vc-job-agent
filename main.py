@@ -14,6 +14,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,7 +22,7 @@ from sqlmodel import Session, select
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from database import Job, JobStatus, UserSettings, create_db, get_session, get_settings, upsert_job
+from database import Job, JobStatus, UserSettings, create_db, engine, get_session, get_settings, upsert_job
 from notifier import send_health_check, send_weekly_report
 from scrapers import scrape_mainstream, scrape_vc_boards, scrape_wellfound
 from scorer import rescore_job, score_unscored_jobs
@@ -60,9 +61,29 @@ async def lifespan(app: FastAPI):
     yield
     _scheduler.shutdown(wait=False)
 
-app = FastAPI(title="VC Job Agent", lifespan=lifespan)
+app = FastAPI(title="Job Search Agent", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# ── Setup guard middleware ─────────────────────────────────────────────────────
+
+_SETUP_EXEMPT = ("/setup", "/api/setup", "/static", "/api/scrape-status")
+
+class SetupGuardMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in _SETUP_EXEMPT):
+            return await call_next(request)
+        try:
+            with Session(engine) as _s:
+                s = get_settings(_s)
+                if not s.setup_complete:
+                    return RedirectResponse("/setup")
+        except Exception:
+            pass
+        return await call_next(request)
+
+app.add_middleware(SetupGuardMiddleware)
 
 # Thread pool for running sync scrapers in background
 executor = ThreadPoolExecutor(max_workers=4)
@@ -440,6 +461,73 @@ def flush_jobs(session: Session = Depends(get_session)):
         "low_score": len(low_score),
         "stale": len(stale),
     })
+
+
+# ── Routes: Setup Wizard ──────────────────────────────────────────────────────
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page(request: Request, session: Session = Depends(get_session)):
+    s = get_settings(session)
+    import json as _json
+    titles_raw = "\n".join(_json.loads(s.target_titles)) if s.target_titles else ""
+    return templates.TemplateResponse("setup.html", {
+        "request":  request,
+        "settings": s,
+        "titles_raw": titles_raw,
+        "scrape_status": scrape_status,
+    })
+
+
+@app.post("/api/setup/step/1")
+def setup_step1(
+    owner_name: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    s = get_settings(session)
+    if owner_name.strip():
+        s.owner_name = owner_name.strip()
+    s.setup_step = 1
+    session.add(s); session.commit()
+    return RedirectResponse(url="/setup?step=2", status_code=303)
+
+
+@app.post("/api/setup/step/2")
+def setup_step2(
+    resume_text: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    s = get_settings(session)
+    s.resume_text = resume_text.strip()
+    s.setup_step = 2
+    session.add(s); session.commit()
+    return RedirectResponse(url="/setup?step=3", status_code=303)
+
+
+@app.post("/api/setup/step/3")
+def setup_step3(
+    target_titles_raw: str = Form(""),
+    job_anticipations: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    import json as _json
+    s = get_settings(session)
+    titles = [t.strip() for t in target_titles_raw.splitlines() if t.strip()]
+    if titles:
+        s.target_titles = _json.dumps(titles)
+    if job_anticipations.strip():
+        s.job_anticipations = job_anticipations.strip()
+    s.setup_step = 3
+    session.add(s); session.commit()
+    return RedirectResponse(url="/setup?step=4", status_code=303)
+
+
+@app.post("/api/setup/step/4")
+def setup_step4(session: Session = Depends(get_session)):
+    s = get_settings(session)
+    s.setup_complete = True
+    s.setup_step = 4
+    session.add(s); session.commit()
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/api/stats")

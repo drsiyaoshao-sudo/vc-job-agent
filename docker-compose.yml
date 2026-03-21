@@ -1,0 +1,13 @@
+services:
+  job-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - job-agent-data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  job-agent-data:

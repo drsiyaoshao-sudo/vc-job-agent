@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Setup — Job Search Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="h-full text-gray-100" x-data="setupWizard()" x-init="init()">
+
+  <div class="min-h-full flex items-start justify-center px-4 py-12">
+    <div class="w-full max-w-xl">
+
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <div class="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-1">Job Search Agent</div>
+        <h1 class="text-2xl font-bold text-gray-100">Welcome — let's set you up</h1>
+        <p class="text-gray-400 text-sm mt-1">Takes about 2 minutes</p>
+      </div>
+
+      <!-- Step progress -->
+      <div class="flex items-center justify-between mb-8 px-2">
+        <template x-for="i in [1,2,3,4]" :key="i">
+          <div class="flex items-center">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors"
+                 :class="step >= i ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-500'">
+              <span x-text="i"></span>
+            </div>
+            <div x-show="i < 4" class="w-16 h-0.5 mx-1"
+                 :class="step > i ? 'bg-violet-600' : 'bg-gray-800'"></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Step labels -->
+      <div class="flex justify-between text-xs text-gray-500 mb-8 px-1">
+        <span :class="step === 1 ? 'text-violet-400' : ''">Identity</span>
+        <span :class="step === 2 ? 'text-violet-400' : ''">Resume</span>
+        <span :class="step === 3 ? 'text-violet-400' : ''">Job Targets</span>
+        <span :class="step === 4 ? 'text-violet-400' : ''">Done</span>
+      </div>
+
+      <!-- ── Step 1: Identity ── -->
+      <div x-show="step === 1" x-cloak>
+        <form action="/api/setup/step/1" method="post" class="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5">
+          <h2 class="text-base font-semibold text-gray-100">Who are you?</h2>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1.5">Your Name</label>
+            <input type="text" name="owner_name" value="{{ settings.owner_name }}"
+              placeholder="e.g. Jane Smith"
+              required
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
+                     placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"/>
+          </div>
+
+          <div class="flex justify-end">
+            <button type="submit"
+              class="px-6 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+              Next →
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── Step 2: Resume ── -->
+      <div x-show="step === 2" x-cloak>
+        <form action="/api/setup/step/2" method="post" class="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5">
+          <h2 class="text-base font-semibold text-gray-100">Paste your resume</h2>
+          <p class="text-xs text-gray-500">Used by Claude to score each job against your background. You can edit it later in Settings.</p>
+
+          <textarea name="resume_text" rows="16"
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
+                   placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500
+                   font-mono resize-y"
+            placeholder="Name: ...&#10;Current Role: ...&#10;&#10;BACKGROUND&#10;- ..."
+          >{{ settings.resume_text }}</textarea>
+
+          <div class="flex justify-between">
+            <button type="button" @click="step = 1"
+              class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm transition-colors">
+              ← Back
+            </button>
+            <button type="submit"
+              class="px-6 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+              Next →
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── Step 3: Job Targets ── -->
+      <div x-show="step === 3" x-cloak>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5">
+          <h2 class="text-base font-semibold text-gray-100">What roles are you targeting?</h2>
+          <p class="text-xs text-gray-500">These drive your search queries and help Claude score listings against your goals.</p>
+
+          <form action="/api/setup/step/3" method="post" class="space-y-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1.5">Target Job Titles</label>
+              <p class="text-xs text-gray-500 mb-2">One per line — used to generate LinkedIn/Indeed search queries</p>
+              <textarea name="target_titles_raw" rows="6"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
+                       placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 resize-y"
+                placeholder="Software Engineer&#10;Product Manager&#10;Data Scientist"
+              >{{ titles_raw }}</textarea>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1.5">Job Anticipations</label>
+              <p class="text-xs text-gray-500 mb-2">Describe your target role types, domains, seniority, and location preferences. Claude reads this when scoring.</p>
+              <textarea name="job_anticipations" rows="3"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
+                       placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 resize-y"
+                placeholder="e.g. Senior software engineering roles at early-stage startups. Open to remote or Bay Area."
+              >{{ settings.job_anticipations }}</textarea>
+            </div>
+
+            <div class="flex justify-between">
+              <button type="button" @click="step = 2"
+                class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm transition-colors">
+                ← Back
+              </button>
+              <button type="submit"
+                class="px-6 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+                Next →
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Step 4: Done ── -->
+      <div x-show="step === 4" x-cloak>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center space-y-6">
+          <div class="w-16 h-16 rounded-full bg-emerald-900/50 border border-emerald-700 flex items-center justify-center mx-auto">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold text-gray-100 mb-1">You're all set!</h2>
+            <p class="text-gray-400 text-sm">Your profile is saved. The agent will scrape and score jobs on its schedule — or click <strong>Scrape Jobs</strong> to run immediately.</p>
+          </div>
+          <div class="space-y-2 text-sm text-gray-400 text-left bg-gray-800 rounded-lg p-4">
+            <p class="font-medium text-gray-300 mb-2">What happens next:</p>
+            <p>→ Scrapes LinkedIn, Wellfound, jobs.vc, and direct firm pages</p>
+            <p>→ Scores each job against your resume with Claude AI</p>
+            <p>→ Sends email / WhatsApp alerts for high-score matches</p>
+            <p>→ You can update your profile at any time in <span class="text-violet-400">Settings</span></p>
+          </div>
+          <form action="/api/setup/step/4" method="post">
+            <button type="submit"
+              class="w-full px-6 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+              Launch Dashboard →
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function setupWizard() {
+      return {
+        step: parseInt(new URLSearchParams(window.location.search).get('step') || '{{ settings.setup_step or 1 }}'),
+        init() {
+          if (this.step < 1) this.step = 1;
+          if (this.step > 4) this.step = 4;
+        }
+      }
+    }
+  </script>
+</body>
+</html>

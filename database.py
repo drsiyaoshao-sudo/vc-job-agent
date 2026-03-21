@@ -65,6 +65,8 @@ class UserSettings(SQLModel, table=True):
     job_anticipations: str = Field(default="")    # free-text: domains, preferences, seniority
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     total_jobs_ever: int = Field(default=0)       # lifetime count; preserved across flushes
+    setup_complete: bool = Field(default=False)   # False triggers setup wizard on first run
+    setup_step: int = Field(default=0)            # last completed step (0–4)
 
 
 def alter_db():
@@ -76,6 +78,13 @@ def alter_db():
             # Initialise to current job count so the lifetime total is correct from migration
             count = conn.execute(text("SELECT COUNT(*) FROM job")).scalar() or 0
             conn.execute(text(f"UPDATE usersettings SET total_jobs_ever = {count}"))
+        if "setup_complete" not in existing:
+            conn.execute(text("ALTER TABLE usersettings ADD COLUMN setup_complete INTEGER DEFAULT 0"))
+            # Existing installs are already set up — mark them complete
+            conn.execute(text("UPDATE usersettings SET setup_complete = 1"))
+        if "setup_step" not in existing:
+            conn.execute(text("ALTER TABLE usersettings ADD COLUMN setup_step INTEGER DEFAULT 0"))
+            conn.execute(text("UPDATE usersettings SET setup_step = 4"))
         conn.commit()
 
 
