@@ -126,9 +126,11 @@ def _run_scrape(session_factory):
 
     try:
         all_jobs: list[dict] = []
+        # Investor-curated boards first — highest signal for early-stage startup roles
+        all_jobs.extend(scrape_vc_boards())
+        # Broad LinkedIn/Indeed sweep second
         all_jobs.extend(scrape_mainstream())
         all_jobs.extend(scrape_wellfound())
-        all_jobs.extend(scrape_vc_boards())
         all_jobs.extend(scrape_gmail_alerts())
 
         with session_factory() as session:

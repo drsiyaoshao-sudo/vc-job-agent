@@ -112,6 +112,28 @@ VC_BOARD_URLS = {
     "jobs_vc": "https://jobs.vc",
 }
 
+# ── Investor portfolio job boards (high-signal early-stage startup roles) ──────
+# Scraped BEFORE LinkedIn/Indeed — these boards are curated by VCs and surface
+# founding/staff engineer, research engineer, and FAE roles at Seed–Series B
+# companies that rarely post on generic job boards.
+INVESTOR_BOARD_URLS: list[dict] = [
+    # YC portfolio — largest curated early-stage startup board
+    {"board": "Work at a Startup (YC)",     "url": "https://www.workatastartup.com/jobs"},
+
+    # Top-tier VC portfolio boards
+    {"board": "a16z Jobs",                  "url": "https://jobs.a16z.com"},
+    {"board": "First Round Jobs",           "url": "https://jobs.firstround.com"},
+    {"board": "Sequoia Jobs",               "url": "https://jobs.sequoiacap.com"},
+    {"board": "Greylock Jobs",              "url": "https://jobs.greylock.com"},
+    {"board": "Initialized Capital Jobs",   "url": "https://jobs.initialized.com"},
+    {"board": "Lux Capital Talent",         "url": "https://jobs.luxcapital.com"},
+
+    # Deep-tech / hardware / climate focused
+    {"board": "Climatebase",                "url": "https://climatebase.org/jobs"},
+    {"board": "MCJ Collective",             "url": "https://www.mcjcollective.com/my-community/job-board"},
+    {"board": "Hardware Club Jobs",         "url": "https://jobs.hardwareclub.co"},
+]
+
 # ── Direct VC/CVC firm career page URLs to watch ─────────────────────────────
 # All URLs verified live. Each firm page is scraped for investor-relevant roles
 # (venture, investor, principal, partner, associate, analyst, sourcing, portfolio).

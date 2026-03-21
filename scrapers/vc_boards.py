@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from config import TARGET_FIRM_URLS, VC_BOARD_URLS
+from config import INVESTOR_BOARD_URLS, TARGET_FIRM_URLS, VC_BOARD_URLS
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +77,21 @@ def scrape_vc_boards() -> list[dict]:
     """
     Scrape VC-specific job boards and direct firm career pages.
     Returns list of job dicts.
+
+    Run order (highest signal first):
+      0. Investor portfolio boards (YC, a16z, First Round, etc.)
+      1. jobs.vc board
+      2. NFX Guild job board
+      3. Venture Capital Careers board
+      4. Direct firm career pages
     """
     all_jobs: list[dict] = []
     seen_urls: set[str] = set()
 
     with httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+        # 0. Investor portfolio boards — highest signal for early-stage startup roles
+        all_jobs.extend(_scrape_investor_boards(client, seen_urls))
+
         # 1. jobs.vc board
         all_jobs.extend(_scrape_jobs_vc(client, seen_urls))
 
@@ -103,6 +113,89 @@ def scrape_vc_boards() -> list[dict]:
 
     logger.info(f"[vc_boards] Total jobs scraped: {len(all_jobs)}")
     return all_jobs
+
+
+# ── Investor portfolio job boards ─────────────────────────────────────────────
+
+def _scrape_investor_boards(client: httpx.Client, seen_urls: set) -> list[dict]:
+    """
+    Scrape all boards in INVESTOR_BOARD_URLS.
+    Each board is a VC-curated listing of early-stage startup jobs.
+    """
+    jobs: list[dict] = []
+    for board_cfg in INVESTOR_BOARD_URLS:
+        name = board_cfg.get("board", "Unknown Board")
+        url  = board_cfg.get("url", "")
+        if not url:
+            continue
+        board_jobs = _scrape_board_listing(client, name, url, seen_urls)
+        jobs.extend(board_jobs)
+        if board_jobs:
+            logger.info(f"[investor_board/{name}] {len(board_jobs)} jobs found")
+    return jobs
+
+
+def _scrape_board_listing(
+    client: httpx.Client,
+    board: str,
+    url: str,
+    seen_urls: set,
+) -> list[dict]:
+    """
+    Generic investor board scraper.
+    Fetches the listing page, extracts links whose anchor text matches
+    INVESTOR_KEYWORDS, fetches each posting for description, caps at
+    MAX_JOBS_PER_FIRM.
+    """
+    jobs: list[dict] = []
+    try:
+        resp = client.get(url, timeout=20)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.warning(f"[investor_board/{board}] Failed to fetch {url}: {e}")
+        return jobs
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    base_domain = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+
+    candidates: list[tuple[str, str]] = []
+    seen_hrefs: set[str] = set()
+
+    for a in soup.select("a[href]"):
+        href = a.get("href", "").strip()
+        text = a.get_text(strip=True)
+        if not href or not text or len(text) > 150:
+            continue
+
+        # Must match a keyword from any target role bucket
+        if not any(kw in text.lower() for kw in INVESTOR_KEYWORDS):
+            continue
+
+        full_url = href if href.startswith("http") else urljoin(base_domain, href)
+        full_url = full_url.split("?")[0].split("#")[0]  # strip query / anchor
+
+        if full_url in seen_urls or full_url in seen_hrefs or full_url == url:
+            continue
+
+        seen_hrefs.add(full_url)
+        candidates.append((text, full_url))
+
+    for title, job_url in candidates[:MAX_JOBS_PER_FIRM]:
+        seen_urls.add(job_url)
+        description = _fetch_job_description(client, job_url)
+        jobs.append({
+            "title":        title,
+            "company":      board,
+            "location":     None,
+            "url":          job_url,
+            "source":       "investor_board",
+            "description":  description or None,
+            "salary_range": None,
+            "is_remote":    None,
+            "posted_date":  None,
+        })
+
+    return jobs
 
 
 # ── jobs.vc board ──────────────────────────────────────────────────────────────
