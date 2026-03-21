@@ -201,6 +201,43 @@ NOTIFY_EMAIL           — Destination for alerts and digests
 
 ---
 
+## Credential Management Rule
+
+**The `.env` file in the repo is ephemeral. The canonical key store is `~/.job-agent-keys`.**
+
+### Rules (apply every time keys are touched)
+
+1. **After setting or updating any key in `.env`, immediately mirror it to the master file:**
+   ```bash
+   cp ~/job-agent/.env ~/.job-agent-keys
+   chmod 600 ~/.job-agent-keys
+   ```
+
+2. **Before starting work on any branch or after any `git checkout`, verify `.env` is intact:**
+   ```bash
+   diff ~/job-agent/.env ~/.job-agent-keys
+   ```
+   If `.env` is empty or missing keys, restore:
+   ```bash
+   cp ~/.job-agent-keys ~/job-agent/.env
+   ```
+
+3. **Never carry `.env` across repos.** Each repo cloned from this one starts with an empty
+   `.env.example`. Keys from `~/.job-agent-keys` are copied in manually after clone — never
+   assumed to exist.
+
+4. **`~/.job-agent-keys` is never committed, never shared, never referenced in code.**
+   It lives outside all git working trees. The repo's `.gitignore` already excludes `.env`;
+   `~/.job-agent-keys` is outside the repo entirely.
+
+### Why this rule exists
+
+The Anthropic API key and Gmail App Password were lost when the repo `.env` was modified
+during a branch comparison session. Because there was no out-of-repo backup, the keys had
+to be regenerated. This rule prevents that from recurring.
+
+---
+
 ## Background Service (macOS)
 
 ```bash
