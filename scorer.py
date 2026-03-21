@@ -27,12 +27,28 @@ Score how well each posting fits their background and target career.
 CANDIDATE PROFILE:
 {profile_text}
 
+TARGET ROLE TYPES (ALL are primary targets — score each appropriately):
+1. VC/CVC investor or partner in deep-tech, hardware, AI, or climate tech
+2. Founding engineer or staff engineer at Seed–Series B deep-tech startups (hardware, AI, IoT, MEMS)
+3. Principal / lead / staff research engineer in MEMS, edge AI, embedded systems, or industrial tech
+4. Field Application Engineer (FAE), Solutions Engineer, Technical Sales Engineer, or Pre-Sales Engineer
+   in hardware, semiconductor, industrial IoT, or AI domains
+
 SCORING RUBRIC (0–100):
-- 85–100: Excellent match — role squarely fits their target, domain, and seniority.
-- 65–84:  Good match — clearly leverages their skills with minor gaps.
-- 45–64:  Moderate — adjacent role that could pivot toward their target.
-- 20–44:  Weak — mostly irrelevant to their career target.
-- 0–19:   Not relevant.
+- 85–100: Excellent — squarely fits one of the 4 target types above AND domain/seniority align.
+          Examples: VC/CVC deep-tech partner; founding engineer at hardware AI seed startup;
+          principal research engineer in MEMS/edge AI; FAE at semiconductor company.
+- 65–84:  Good — fits a target type with minor gaps (slightly off domain, seniority, or location).
+          Examples: VC associate in adjacent domain; senior engineer at Series C+ startup;
+          solutions engineer in adjacent sector; research engineer without senior title.
+- 45–64:  Moderate — adjacent or transferable (EIR, tech scout, product engineer, corporate R&D,
+          innovation manager).
+- 20–44:  Weak — general engineering without deep-tech, startup, or investor angle.
+- 0–19:   Not relevant — unrelated to any of the 4 target types.
+
+IMPORTANT: FAE, solutions engineer, technical sales engineer, and founding/staff engineer roles
+in hardware, semiconductor, IoT, or AI should score 65–100 depending on domain fit — they are
+PRIMARY targets, NOT secondary or adjacent roles.
 
 Return ONLY valid JSON — no markdown, no extra text.
 """
