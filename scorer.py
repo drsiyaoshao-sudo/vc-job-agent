@@ -117,14 +117,41 @@ def score_job(job: Job) -> JobMatchResult | None:
         )
 
 
+DAILY_CLAUDE_CAP = 50  # Max Claude API scoring calls per UTC day
+
+
+def _claude_scored_today(session: Session) -> int:
+    """Count jobs scored by Claude (not fallback) since UTC midnight."""
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    jobs = session.exec(select(Job).where(Job.scored_at >= today)).all()
+    return sum(1 for j in jobs if "[fallback]" not in (j.match_headline or ""))
+
+
 def score_unscored_jobs(session: Session) -> int:
     """
     Find all jobs without a match_score and score them with Claude.
-    Returns the number of jobs scored.
+    Only processes jobs where match_score IS NULL — already-scored jobs
+    (including fallback-scored ones) are never touched.
+    Stops when the daily Claude cap is reached.
+    Returns the number of jobs scored this run.
     """
     jobs = session.exec(select(Job).where(Job.match_score == None)).all()  # noqa: E711
+    if not jobs:
+        return 0
+
+    claude_used = _claude_scored_today(session)
+    remaining_cap = DAILY_CLAUDE_CAP - claude_used
+    if remaining_cap <= 0:
+        logger.info(f"[scorer] Daily Claude cap ({DAILY_CLAUDE_CAP}) already reached — skipping {len(jobs)} unscored jobs")
+        return 0
+
     count = 0
     for job in jobs:
+        if count >= remaining_cap:
+            skipped = len(jobs) - count
+            logger.info(f"[scorer] Daily Claude cap ({DAILY_CLAUDE_CAP}) reached — {skipped} jobs deferred to next run")
+            break
+
         result = score_job(job)
         if result:
             job.match_score = result.score
