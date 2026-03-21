@@ -17,9 +17,22 @@ A personal AI-powered job search agent built for **Dr. Siyao Shao**, targeting f
 
 ## Scraping Pipeline
 
-Each scheduled run executes five stages in order, with a hard cap of **20 jobs per source/query** to control scoring costs and keep runs under 5 minutes. Investor portfolio boards run **first** — they surface early-stage startup roles that rarely appear on generic job boards.
+Each scheduled run executes five stages in order, with a hard cap of **20 jobs per source/query** to control scoring costs and keep runs under 5 minutes. Direct VC/CVC firm pages run **first** — the highest-signal source for roles that match the target profile exactly.
 
-### Stage 1 — Investor portfolio job boards (`scrapers/vc_boards.py`)
+### Stage 1 — Direct VC/CVC firm career pages (`scrapers/vc_boards.py`)
+
+Visits each firm URL in `TARGET_FIRM_URLS` in `config.py` directly. These are known target firms — roles here have the highest alignment with the candidate profile.
+
+| Category | Firms |
+|----------|-------|
+| **CVC — deep-tech / hardware / AI** | TDK Ventures, Samsung Next, Panasonic Ventures, Shell Ventures, Honeywell Ventures, ABB Technology Ventures, Qualcomm Ventures, Bosch Careers, Siemens Next47 |
+| **Deep-tech / hardware VC** | DCVC, In-Q-Tel, Lux Capital, Eclipse Ventures, Root Ventures, Prelude Ventures, Obvious Ventures |
+| **Climate / energy VC** | Energy Impact Partners, Congruent Ventures, Clean Energy Ventures, Chrysalix Energy VC |
+| **Canada-based** | BDC Capital, Real Ventures, Inovia Capital, MaRS Discovery District |
+
+Source tag: `direct` · Results per firm: **20 max**
+
+### Stage 2 — Investor portfolio job boards (`scrapers/vc_boards.py`)
 
 VC-curated boards where portfolio companies post roles directly. High signal for founding engineer, staff engineer, research engineer, and FAE/solutions roles at Seed–Series B companies.
 
@@ -38,7 +51,7 @@ VC-curated boards where portfolio companies post roles directly. High signal for
 
 Source tag: `investor_board` · Results per board: **20 max**
 
-### Stage 2 — LinkedIn / Indeed (`scrapers/jobspy.py`)
+### Stage 3 — LinkedIn / Indeed (`scrapers/jobspy.py`)
 
 Searches LinkedIn and Indeed using 26 queries covering all 4 target role types. Requires Python 3.10+; runs via `jobspy310` conda env subprocess on Python 3.9.
 
@@ -86,11 +99,11 @@ application engineer MEMS IoT
 
 Results per query: **20 max** · Source tag: `linkedin` / `indeed`
 
-### Stage 3 — Wellfound (`scrapers/wellfound.py`)
+### Stage 4 — Wellfound (`scrapers/wellfound.py`)
 
 Currently **disabled** — Cloudflare blocks automated access. Returns `[]`; kept in pipeline for future re-enablement.
 
-### Stage 4 — VC boards + direct firm career pages (`scrapers/vc_boards.py`)
+### Stage 4b — VC job boards (`scrapers/vc_boards.py`)
 
 Scrapes VC-focused job boards and visits each firm URL in `TARGET_FIRM_URLS` in `config.py`.
 
@@ -111,7 +124,7 @@ Scrapes VC-focused job boards and visits each firm URL in `TARGET_FIRM_URLS` in 
 
 Keyword filter covers all 4 target role types + EIR (not just VC titles). Results per firm: **20 max** · Source tag: `direct`
 
-### Stage 5 — Gmail LinkedIn alerts (`scrapers/gmail_alerts.py`)
+### Stage 5 — Gmail LinkedIn job alerts (`scrapers/gmail_alerts.py`)
 
 Reads LinkedIn job-alert emails via IMAP. Lookback: 7 days; cap: 50 emails, 20 jobs per email. Source tag: `gmail`
 

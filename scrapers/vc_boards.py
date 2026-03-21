@@ -79,29 +79,17 @@ def scrape_vc_boards() -> list[dict]:
     Returns list of job dicts.
 
     Run order (highest signal first):
-      0. Investor portfolio boards (YC, a16z, First Round, etc.)
-      1. jobs.vc board
-      2. NFX Guild job board
-      3. Venture Capital Careers board
-      4. Direct firm career pages
+      1. Direct firm career pages (TARGET_FIRM_URLS — known target VCs/CVCs)
+      2. Investor portfolio boards (YC, a16z, First Round, etc.)
+      3. jobs.vc board
+      4. NFX Guild job board
+      5. Venture Capital Careers board
     """
     all_jobs: list[dict] = []
     seen_urls: set[str] = set()
 
     with httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-        # 0. Investor portfolio boards — highest signal for early-stage startup roles
-        all_jobs.extend(_scrape_investor_boards(client, seen_urls))
-
-        # 1. jobs.vc board
-        all_jobs.extend(_scrape_jobs_vc(client, seen_urls))
-
-        # 2. NFX Guild job board (Next.js JSON)
-        all_jobs.extend(_scrape_nfx(client, seen_urls))
-
-        # 3. Venture Capital Careers board
-        all_jobs.extend(_scrape_vc_careers(client, seen_urls))
-
-        # 4. Direct firm career pages (two-step: listing → individual posting)
+        # 1. Direct firm career pages — highest priority (known target VCs/CVCs)
         for firm_config in TARGET_FIRM_URLS:
             firm = firm_config.get("firm", "Unknown Firm")
             url  = firm_config.get("url", "")
@@ -110,6 +98,18 @@ def scrape_vc_boards() -> list[dict]:
                 all_jobs.extend(jobs)
                 if jobs:
                     logger.info(f"[direct/{firm}] {len(jobs)} jobs found")
+
+        # 2. Investor portfolio boards (YC, a16z, First Round, etc.)
+        all_jobs.extend(_scrape_investor_boards(client, seen_urls))
+
+        # 3. jobs.vc board
+        all_jobs.extend(_scrape_jobs_vc(client, seen_urls))
+
+        # 4. NFX Guild job board (Next.js JSON)
+        all_jobs.extend(_scrape_nfx(client, seen_urls))
+
+        # 5. Venture Capital Careers board
+        all_jobs.extend(_scrape_vc_careers(client, seen_urls))
 
     logger.info(f"[vc_boards] Total jobs scraped: {len(all_jobs)}")
     return all_jobs
