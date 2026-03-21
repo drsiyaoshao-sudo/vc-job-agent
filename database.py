@@ -9,7 +9,9 @@ from typing import Optional
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select, text
 
-DATABASE_URL = "sqlite:///./jobs.db"
+import os
+_db_file = os.getenv("JOB_AGENT_DB", "jobs.db")
+DATABASE_URL = f"sqlite:///./{_db_file}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 
