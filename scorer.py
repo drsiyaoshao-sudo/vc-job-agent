@@ -28,11 +28,15 @@ CANDIDATE PROFILE:
 {profile_text}
 
 SCORING RUBRIC (0–100):
-- 85–100: Excellent match — role squarely fits their target, domain, and seniority.
-- 65–84:  Good match — clearly leverages their skills with minor gaps.
-- 45–64:  Moderate — adjacent role that could pivot toward their target.
-- 20–44:  Weak — mostly irrelevant to their career target.
-- 0–19:   Not relevant.
+- 85–100: Excellent — role squarely fits their stated target type, domain, and seniority level.
+- 65–84:  Good — clearly leverages their skills and background with minor gaps in domain, seniority,
+          or location.
+- 45–64:  Moderate — adjacent or transferable role; could be a stepping stone toward their target.
+- 20–44:  Weak — mostly irrelevant to their career target or significantly below their seniority.
+- 0–19:   Not relevant — unrelated to their background or stated goals.
+
+Score against the candidate's OWN stated target role and domain — not a generic rubric.
+A strong match for one candidate may be irrelevant for another.
 
 Return ONLY valid JSON — no markdown, no extra text.
 """
@@ -76,6 +80,7 @@ def score_job(job: Job) -> JobMatchResult | None:
         response = client.messages.parse(
             model="claude-opus-4-6",
             max_tokens=4096,
+            thinking={"type": "adaptive"},
             system=system,
             messages=[{"role": "user", "content": content}],
             output_format=JobMatchResult,

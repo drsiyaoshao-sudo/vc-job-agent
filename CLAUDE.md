@@ -1,142 +1,217 @@
-# VC Job Agent — Developer Notes
+# Job Search Agent — Developer Notes
 
-## Project Purpose
+## Design Philosophy
 
-Personal AI-powered job search agent for **Dr. Siyao Shao**, targeting Venture Capital investor and partner roles (VC and CVC). Scrapes job boards on a schedule, scores every listing against his deep-tech profile using Claude Opus 4.6, and sends smart notifications.
+**The system reads the candidate. The candidate does not fit the system.**
+
+The agent starts from the candidate's actual credentials and asks *which roles fit them*, scoring
+each listing accordingly. Three principles follow from this:
+
+1. **Profile is runtime, not compile-time.** `resume_text` and `job_anticipations` load fresh from
+   the DB on every scoring call. Edit targets in the `/settings` UI; the next scrape reflects it.
+   No redeploy, no file edit.
+
+2. **Scoring rubric is readable, not hardcoded.** Claude's prompt uses the candidate's own stated
+   goals and background — a strong match for one person may be irrelevant for another. The keyword
+   fallback mirrors the same logic with zero API cost.
+
+3. **Efficiency is first-class.** 20-job cap per scraper. Keyword fallback runs in microseconds.
+   Flush removes low-score/stale noise automatically. SQLite + one process — deployable anywhere.
+
+---
 
 ## Architecture
 
 ```
-main.py          — FastAPI app + APScheduler (scrape 4×/day, health check daily, digest weekly)
-config.py        — Profile string, search queries, target firm URLs, score thresholds
-database.py      — SQLModel Job table + JobStatus enum + upsert_job()
-scorer.py        — Claude Opus 4.6 scoring via messages.parse() + Pydantic JobMatchResult
-notifier.py      — WhatsApp (CallMeBot), Gmail SMTP, health-check and weekly digest emails
+main.py               — FastAPI app + APScheduler (scrape 4×/day, health check daily, digest weekly)
+config.py             — Default profile template, SEARCH_QUERIES, TARGET_FIRM_URLS, thresholds
+database.py           — SQLModel: Job + UserSettings; upsert_job(); alter_db() for migrations
+scorer.py             — Claude Opus 4.6 scoring via messages.parse() + Pydantic JobMatchResult
+                        Falls back to scorer_fallback.py on any API failure
+scorer_fallback.py    — Keyword + TF-IDF fallback scorer (no API, always works)
+profile.py            — Runtime profile loader: get_profile_text(), get_search_queries()
+notifier.py           — WhatsApp (CallMeBot), Gmail SMTP, health-check and weekly digest emails
 scrapers/
-  jobspy.py      — LinkedIn/Indeed via python-jobspy (requires Python 3.10+)
-  wellfound.py   — Wellfound / AngelList scraper
-  vc_boards.py   — jobs.vc + direct firm career pages (configured via TARGET_FIRM_URLS)
-tdk_check.py     — Standalone health-check: scrapes TDK Ventures and scores with Claude
+  jobspy.py           — LinkedIn/Indeed via python-jobspy (requires Python 3.10+; subprocess fallback)
+  wellfound.py        — Disabled (Cloudflare blocks scraping); returns []
+  vc_boards.py        — jobs.vc + NFX + VC Careers + direct firm career pages
+  gmail_alerts.py     — Gmail IMAP: reads LinkedIn job alert emails, extracts listings
+health_monitor.py     — 24-hour polling; writes PASS/PARTIAL/FAIL to health_monitor.log
+tdk_check.py          — Standalone end-to-end check: scrapes one firm + scores with Claude
 ```
 
-## Scraping Pipeline — Order of Execution
+---
 
-Each scheduled scrape runs three stages in this order:
+## Setup for a New User
 
-1. **LinkedIn major VC/CVC company pages** (`scrapers/jobspy.py`)
-   - Uses `python-jobspy` to search LinkedIn and Indeed for VC-related roles
-   - Iterates through `SEARCH_QUERIES` in `config.py`
-   - **Hard cap: 20 results per query** — set `results_wanted=20` in `scrape_jobs()`
-   - Requires Python 3.10+; falls back gracefully to empty list on Python 3.9
+1. Copy `.env.example` → `.env` and fill in your API keys (see Environment Variables below)
+2. Run `uvicorn main:app --reload` and open `http://localhost:8000`
+3. Go to `/settings` and paste your resume, set your target titles and anticipations
+4. Click **Scrape Jobs** in the sidebar to run the first scrape
+5. Add specific firm career pages you want monitored to `TARGET_FIRM_URLS` in `config.py`
 
-2. **Direct company career pages** (`scrapers/vc_boards.py` — `_scrape_firm_page`)
-   - Clicks into each firm listed in `TARGET_FIRM_URLS` in `config.py`
-   - Filters for investor-relevant keywords (venture, investor, principal, partner, etc.)
-   - **Hard cap: 20 jobs per firm page**
-   - Add target firms by editing `TARGET_FIRM_URLS` in `config.py`
+The `config.py` values are only used on first run (when the DB is empty). After that, everything
+is controlled via the `/settings` UI — `config.py` just provides the initial defaults.
 
-3. **VC-specific job boards** (`scrapers/vc_boards.py` — `_scrape_jobs_vc`, `scrapers/wellfound.py`)
-   - Scrapes `jobs.vc` and Wellfound for VC-specific listings
-   - **Hard cap: 20 jobs per board**
+---
 
-All three stages deduplicate by URL before DB insertion.
+## Plan → Execute → Operate Workflow
 
-## Scraper Job Caps
+### Plan (before any change)
 
-Every scraper enforces a **maximum of 20 jobs per source/query**. This is intentional:
-- Controls Claude API scoring costs (each scored job = 1 API call)
-- Keeps the scheduled run under ~5 minutes
-- Avoids overwhelming the dashboard with low-signal results
+Ask: *does this belong in the candidate's profile (runtime, DB) or in the scraper/scorer (code)?*
 
-To change the cap, update `RESULTS_PER_QUERY` in `config.py` (affects jobspy) and the `[:20]` slice guards in `wellfound.py` and `vc_boards.py`.
+- **Preference shift** (new role type, domain, location) → `/settings` UI. No code change.
+- **New scrape source** → add URL to `TARGET_FIRM_URLS` in `config.py`.
+- **Scoring calibration** → edit `TITLE_SIGNALS` / `DOMAIN_GROUPS` in `scorer_fallback.py`.
+  Rescore via sidebar "Score Unscored" button.
+- **Schema change** → add column to `UserSettings` or `Job` in `database.py`, add migration in
+  `alter_db()`, call `alter_db()` inside `create_db()`.
 
-## Claude Scoring
+### Execute (making the change)
 
+1. All Python files must start with `from __future__ import annotations` (Python 3.9 constraint).
+2. Never bypass `alter_db()` for schema changes — existing installs must migrate without data loss.
+3. Every new scraper must deduplicate by URL and enforce the 20-job hard cap.
+4. Claude scorer always has a fallback path — never let an API failure block a scrape run.
+5. Restart the app after any `main.py` or `scorer.py` change:
+   ```bash
+   # macOS LaunchAgent
+   launchctl unload ~/Library/LaunchAgents/com.jobagent.plist
+   launchctl load  ~/Library/LaunchAgents/com.jobagent.plist
+   # or simply restart uvicorn
+   ```
+
+### Operate (day-to-day)
+
+| Action | How |
+|--------|-----|
+| Update resume / targets | `/settings` UI → Save → takes effect on next score call |
+| Trigger scrape manually | Sidebar **Scrape Jobs** button |
+| Re-score existing jobs | Sidebar **Score Unscored** button |
+| Check Gmail alerts | Sidebar **Check Gmail** button |
+| Remove low-signal noise | Sidebar **Flush Low-Score** — deletes `new` jobs scored <50 or scraped >14 days ago |
+| Add a target firm | `TARGET_FIRM_URLS` in `config.py`, restart app |
+| View lifetime job count | Dashboard **Ever Found** stat card (persists across flushes) |
+
+---
+
+## Scraping Pipeline
+
+Each scheduled scrape (4×/day) runs four stages:
+
+1. **LinkedIn / Indeed** (`scrapers/jobspy.py`)
+   - Searches via `SEARCH_QUERIES` from `config.py` (overridden by `UserSettings.target_titles`)
+   - Hard cap: 20 results per query
+   - Requires Python 3.10+; runs via a `jobspy310` conda env subprocess on Python 3.9
+
+2. **Wellfound** (`scrapers/wellfound.py`)
+   - Currently disabled — Cloudflare blocks access. Returns `[]`.
+
+3. **VC boards + direct firm pages** (`scrapers/vc_boards.py`)
+   - jobs.vc, NFX Guild, Venture Capital Careers
+   - Direct career pages in `TARGET_FIRM_URLS`
+   - `INVESTOR_KEYWORDS` filter covers investor, engineering, research, and FAE/sales titles
+   - Hard cap: 20 jobs per source/firm
+
+4. **Gmail LinkedIn alerts** (`scrapers/gmail_alerts.py`)
+   - IMAP to Gmail; reads LinkedIn jobs-noreply emails
+   - Lookback: 7 days; cap: 50 emails, 20 jobs per email
+
+All stages deduplicate by URL. `upsert_job()` increments `UserSettings.total_jobs_ever` on each insertion.
+
+---
+
+## Scoring
+
+### Claude scorer (`scorer.py`)
 - Model: `claude-opus-4-6` with `thinking={"type": "adaptive"}`
-- Structured output via `client.messages.parse()` with Pydantic `JobMatchResult`
-- Each job gets: `score` (0–100), `headline`, `pros` (list), `cons` (list), `key_requirements` (list)
-- Descriptions truncated to 6,000 characters before sending to Claude
+- Structured output via `client.messages.parse()` + Pydantic `JobMatchResult`
+- Each job: `score` (0–100), `headline`, `pros`, `cons`, `key_requirements`
+- Profile loaded fresh from `UserSettings` on every call — edits take immediate effect
+- Any failure → automatic fallback to keyword scorer
 
-**Score rubric:**
+### Keyword fallback scorer (`scorer_fallback.py`)
+- No API dependency — always runs
+- Three layers: title keywords (0–45 pts) + domain keywords (0–35 pts) + TF-IDF cosine (0–20 pts)
+- Tuned for VC/investor, founding engineer, research engineer, and FAE/sales role buckets by default
+- Customise `TITLE_SIGNALS` and `DOMAIN_GROUPS` to match a different candidate profile
 
-| Range  | Label    | Meaning                                                    |
-|--------|----------|------------------------------------------------------------|
-| 85–100 | Excellent | VC/CVC investor/partner in deep-tech, hardware, climate, AI |
-| 65–84  | Good      | VC/CVC with slightly different domain or seniority         |
-| 45–64  | Moderate  | Adjacent (tech scout, EIR, corporate innovation)           |
-| 20–44  | Weak      | Deep-tech operating role, loosely related                  |
-| 0–19   | Not relevant | Unrelated to VC or Siyao's background                  |
+### Score rubric
 
-**Notification thresholds** (set in `notifier.py`):
-- Score ≥ 90 → instant WhatsApp alert (CallMeBot)
-- Score ≥ 75 → instant email alert (Gmail SMTP)
+| Range  | Label        | Meaning |
+|--------|--------------|---------|
+| 85–100 | Excellent    | Squarely fits stated target; domain and seniority align |
+| 65–84  | Good         | Fits target with minor gaps in domain, seniority, or location |
+| 45–64  | Moderate     | Adjacent / transferable; possible pivot toward target |
+| 20–44  | Weak         | Mostly irrelevant or significantly off seniority |
+| 0–19   | Not relevant | Unrelated to candidate's background or goals |
+
+### Notification thresholds
+- Score ≥ 90 → instant WhatsApp (CallMeBot)
+- Score ≥ 75 → instant email (Gmail SMTP)
+
+---
+
+## Database
+
+`UserSettings` — single-row config. Key runtime fields:
+
+| Field | Purpose |
+|-------|---------|
+| `resume_text` | Full resume; sent to Claude and used for TF-IDF fallback |
+| `target_titles` | JSON list; generates LinkedIn/Indeed search queries |
+| `job_anticipations` | Free text; appended to Claude system prompt |
+| `total_jobs_ever` | Lifetime counter; survives flush operations |
+
+Schema migrations: add column + default in `alter_db()` in `database.py`. Never use ORM auto-migrate.
+
+---
 
 ## Python Version Constraint
 
-The user runs **Python 3.9.7 (Anaconda)**. All files that use union type hints must include:
+Runs on **Python 3.9+**. Every file must include:
 
 ```python
 from __future__ import annotations
 ```
 
-at the very top (before any other imports, after the module docstring). The `str | None` syntax is a runtime error on Python 3.9 without this import.
+`python-jobspy` requires Python 3.10+ → isolated via `jobspy310` conda env and called by subprocess.
 
-`python-jobspy` (Bunsly/JobSpy) requires Python 3.10+. The scraper handles this gracefully with a try/except ImportError that logs a warning and returns an empty list.
+---
 
 ## Environment Variables
 
-All secrets live in `.env` (gitignored). Required keys:
-
 ```
-ANTHROPIC_API_KEY      — Anthropic API key with credits (use the "my-second-key" key ending EAAA)
-CALLMEBOT_PHONE        — WhatsApp phone number with country code, no + (e.g. 14388850126)
-CALLMEBOT_APIKEY       — CallMeBot API key (activate by messaging +34 644 59 79 13 on WhatsApp)
-GMAIL_USER             — Gmail address (dr.siyaoshao@gmail.com)
-GMAIL_APP_PASS         — Gmail App Password (not the account password)
-NOTIFY_EMAIL           — Destination email for alerts and digests
+ANTHROPIC_API_KEY      — Anthropic API key
+CALLMEBOT_PHONE        — WhatsApp phone with country code, no +
+CALLMEBOT_APIKEY       — CallMeBot API key
+GMAIL_USER             — Gmail address
+GMAIL_APP_PASS         — Gmail App Password
+NOTIFY_EMAIL           — Destination for alerts and digests
 ```
 
-## Running Locally
-
-```bash
-cd ~/job-agent
-uvicorn main:app --reload
-# Open http://localhost:8000
-```
+---
 
 ## Background Service (macOS)
 
-The agent runs as a LaunchAgent — starts automatically on login, restarts on crash.
-
 ```bash
-# Start
-launchctl load ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
-
-# Stop
-launchctl unload ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
-
-# Logs
-tail -f ~/job-agent/agent.log
+launchctl load   ~/Library/LaunchAgents/com.jobagent.plist   # start
+launchctl unload ~/Library/LaunchAgents/com.jobagent.plist   # stop
+tail -f ~/job-agent/agent.log                                 # logs
 ```
 
-## Health Check Script
+App runs on **port 8000** by default.
 
-`tdk_check.py` is a standalone script that scrapes TDK Ventures specifically and scores results with Claude. Used to verify the API key and scoring pipeline are working.
+---
 
-```bash
-python3 tdk_check.py
-# Output written to tdk_healthcheck.log
-```
-
-## Adding Target VC Firms
-
-Edit `TARGET_FIRM_URLS` in `config.py`:
+## Adding Target Firms
 
 ```python
+# config.py
 TARGET_FIRM_URLS = [
-    {"firm": "Lux Capital",   "url": "https://www.luxcapital.com/careers"},
-    {"firm": "DCVC",          "url": "https://www.dcvc.com/careers"},
+    {"firm": "Acme Ventures", "url": "https://acmeventures.com/careers"},
 ]
 ```
 
-The scraper visits each URL, finds investor-role links, and returns up to 20 jobs per page.
+The scraper visits the URL, follows links matching `INVESTOR_KEYWORDS`, returns up to 20 jobs.

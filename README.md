@@ -1,6 +1,6 @@
 # VC Job Agent
 
-A personal AI-powered job search agent built for **Dr. Siyao Shao**, targeting Venture Capital investor and partner roles. It scrapes job boards 4× daily, scores every listing against a deep-tech VC profile using **Claude Opus 4.6**, and delivers smart notifications via WhatsApp and email.
+A self-hosted AI-powered job search agent. It scrapes job boards 4× daily, scores every listing against your own profile using **Claude Opus 4.6**, and delivers smart notifications via WhatsApp and email. Configure your resume and target roles once via the web UI — Claude reads them fresh on every scoring run.
 
 ## Features
 
@@ -167,12 +167,12 @@ Open **http://localhost:8000**
 ### 4. Run as a background service (auto-start on login)
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
+launchctl load ~/Library/LaunchAgents/com.jobagent.plist
 ```
 
 To stop:
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
+launchctl unload ~/Library/LaunchAgents/com.jobagent.plist
 ```
 
 Logs: `tail -f ~/job-agent/agent.log`

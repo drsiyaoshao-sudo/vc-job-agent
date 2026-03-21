@@ -1,72 +1,48 @@
 """
 Job Agent configuration — profile, search terms, and target firms.
+
+Edit these values to match your own background and job targets, or update
+everything from the web UI at /settings without touching this file.
 """
 
-# ── Siyao's profile used by Claude for job scoring ──────────────────────────
+# ── Candidate profile (fallback — overridden by UserSettings.resume_text) ────
+# Paste your resume or a summary here.  Claude reads this verbatim when scoring.
+# The /settings UI lets you update it without editing code.
 PROFILE = """
-Name: Dr. Siyao Shao
-Current Role: Chief Technology Officer, RECHO AI Inc. (Montréal, QC, Canada)
-Location: Montréal, QC — open to remote or relocation globally.
-Target Role: Venture Capital Investor or Partner (VC and CVC)
+Name: [Your Name]
+Current Role: [Your current title and company]
+Location: [City, Country — remote preferences]
+Target Role: [What you're looking for]
 
 BACKGROUND
-- Ph.D., Mechanical Engineering — University of Minnesota (2014–2020)
-- Current CTO at RECHO AI: architected full-stack MEMS-based reservoir computing platform
-  across industrial failure detection, consumer electronics, pest control.
-  Raised $1.4M USD pre-seed; secured potential $1M ARR in evaluation contracts.
-  Selected for Amazon's inaugural Device Climate Tech Accelerator (14 of 600+ applicants).
-- Former Entrepreneur in Residence at TandemLaunch (deep-tech startup studio, 2022–2024):
-  tech scouting & market analysis on low-cost ML computing; built & scaled a 5-person
-  engineering team in under 2 years; recruited CEO and VP of Engineering.
-- NSF I-Corps National Commercialization Fellow — completed full national program.
-- Chief Science Officer of Particle4X (spinout from doctoral research).
-- 25+ peer-reviewed papers in fluid mechanics, computer vision, machine learning.
-- 3 US and international patents (computer vision, optical diagnostics, novel computing hardware).
+- [Degree, field, institution, year]
+- [Most recent role: what you built, what you achieved]
+- [Prior role: key accomplishment]
 
 TECHNICAL SKILLS
-- MEMS, reservoir computing, edge AI / TinyML, embedded systems
-- Computer vision, deep learning, signal processing
-- Python, C/C++
+- [Skill area 1]
+- [Skill area 2]
 
-VENTURE & STRATEGY SKILLS (directly relevant for VC)
-- Technology scouting and competitive landscape analysis
-- IP and patent strategy evaluation
-- Deep-tech due diligence (hardware, AI/ML, climate tech, industrial systems)
-- Market sizing and commercialization roadmapping
-- Startup formation and founding-team assembly
-- Pre-seed fundraising (raised $1.4M USD)
-- Enterprise business development and investor relations
+DOMAIN EXPERTISE
+- [Domain 1], [Domain 2], [Domain 3]
 
-DOMAINS OF EXPERTISE
-- Industrial IoT, climate tech, audio event detection, multiphase flow,
-  renewable energy systems, biometrics, edge computing, hardware AI
-
-VC FIT SUMMARY
-Siyao combines rare technical depth (PhD + patents + hands-on hardware/AI R&D) with
-direct commercialization and fundraising experience. He has sat on the founder side,
-built teams, closed enterprise pilots, and navigated pre-seed fundraising — making him
-uniquely qualified to evaluate and support deep-tech portfolio companies.
+SUMMARY
+[2–3 sentences on why you are a strong candidate for your target role type.]
 """
 
-# ── Search queries (used across all scrapers) ────────────────────────────────
+# ── Search queries (used by LinkedIn / Indeed scraper) ───────────────────────
+# These are the literal search strings sent to job boards.
+# Override at runtime via UserSettings.target_titles → profile.get_active_queries().
 SEARCH_QUERIES = [
-    "venture capital investor deep tech",
-    "venture capital partner hardware AI",
-    "CVC investor technology",
-    "corporate venture capital associate",
-    "deep tech venture investor",
-    "investment partner climate tech",
-    "hardware venture capital principal",
-    "venture capital associate industrial",
-    "technology venture investor",
-    "venture principal AI hardware",
+    "software engineer",
+    "product manager",
+    "data scientist",
 ]
 
 # ── Wellfound / AngelList search terms ───────────────────────────────────────
 WELLFOUND_QUERIES = [
-    "venture capital",
-    "investor deep tech",
-    "CVC",
+    "software engineer",
+    "product manager",
 ]
 
 # ── VC-specific job board URLs ────────────────────────────────────────────────
@@ -74,45 +50,13 @@ VC_BOARD_URLS = {
     "jobs_vc": "https://jobs.vc",
 }
 
-# ── Direct VC/CVC firm career page URLs to watch ─────────────────────────────
-# All URLs verified live. Each firm page is scraped for investor-relevant roles
-# (venture, investor, principal, partner, associate, analyst, sourcing, portfolio).
+# ── Direct firm career page URLs to watch ────────────────────────────────────
+# Each entry is scraped for relevant job links on every run.
 # Hard cap: 20 jobs per firm page.
-TARGET_FIRM_URLS: list[dict] = [
-
-    # ── CVC (Corporate Venture Capital) ──────────────────────────────────────
-    # Strong alignment with Siyao's deep-tech / hardware / AI / industrial profile
-    {"firm": "TDK Ventures",            "url": "https://tdk-ventures.com/careers/"},
-    {"firm": "Samsung Next",            "url": "https://www.samsungnext.com/careers"},
-    {"firm": "Panasonic Ventures",      "url": "https://www.panasonicventures.com/careers"},
-    {"firm": "Shell Ventures",          "url": "https://www.shell.com/careers.html"},
-    {"firm": "Honeywell Ventures",      "url": "https://careers.honeywell.com"},
-    {"firm": "ABB Technology Ventures", "url": "https://careers.abb/global/en"},
-    {"firm": "Qualcomm Ventures",       "url": "https://www.qualcomm.com/company/careers"},
-    {"firm": "Bosch Careers",           "url": "https://www.bosch.com/careers/"},
-    {"firm": "Siemens Next47",          "url": "https://www.n47.com/"},
-
-    # ── Deep-Tech / Hardware / AI VC ─────────────────────────────────────────
-    {"firm": "DCVC",                    "url": "https://www.dcvc.com/careers"},
-    {"firm": "In-Q-Tel",                "url": "https://www.iqt.org/careers/"},
-    {"firm": "Lux Capital",             "url": "https://www.luxcapital.com/people"},
-    {"firm": "Eclipse Ventures",        "url": "https://eclipse.capital/"},
-    {"firm": "Root Ventures",           "url": "https://root.vc/"},
-    {"firm": "Prelude Ventures",        "url": "https://www.preludeventures.com/team"},
-    {"firm": "Obvious Ventures",        "url": "https://obvious.com/"},
-
-    # ── Climate / Energy VC ───────────────────────────────────────────────────
-    {"firm": "Energy Impact Partners",  "url": "https://www.energyimpactpartners.com/join-the-team/"},
-    {"firm": "Congruent Ventures",      "url": "https://www.congruentvc.com/team"},
-    {"firm": "Clean Energy Ventures",   "url": "https://cleanenergyventures.com/about/"},
-    {"firm": "Chrysalix Energy VC",     "url": "https://www.chrysalix.com/"},
-
-    # ── Canada-based ──────────────────────────────────────────────────────────
-    {"firm": "BDC Capital",             "url": "https://www.bdc.ca/en/bdc-capital"},
-    {"firm": "Real Ventures",           "url": "https://realventures.com/"},
-    {"firm": "Inovia Capital",          "url": "https://www.inovia.vc/team/"},
-    {"firm": "MaRS Discovery District", "url": "https://www.marsdd.com/careers/"},
-]
+#
+# Example:
+#   {"firm": "Acme Corp",  "url": "https://acme.com/careers"},
+TARGET_FIRM_URLS: list[dict] = []
 
 # ── Scraping settings ─────────────────────────────────────────────────────────
 RESULTS_PER_QUERY = 20      # Jobs fetched per search query (hard cap per source)
@@ -120,7 +64,7 @@ HOURS_OLD = 168             # Only fetch jobs posted in the last 7 days
 JOB_SITES = ["linkedin", "indeed"]  # python-jobspy site list
 
 # ── Scoring thresholds ────────────────────────────────────────────────────────
-SCORE_EXCELLENT = 80   # Green  — strong VC/CVC match
+SCORE_EXCELLENT = 80   # Green  — strong match
 SCORE_GOOD = 60        # Yellow — good match with minor gaps
 SCORE_MODERATE = 40    # Orange — adjacent / worth reviewing
 # Below SCORE_MODERATE → red / probably skip

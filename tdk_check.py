@@ -105,8 +105,8 @@ def scrape_linkedin() -> list[dict]:
 
 # ── Claude scoring ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = f"""You are a career advisor for Dr. Siyao Shao targeting VC/CVC investor roles.
-Score the job 0-100 against his profile. Return ONLY valid JSON — no markdown fences.
+SYSTEM_PROMPT = f"""You are a career advisor. Score this job 0-100 against the candidate profile below.
+Return ONLY valid JSON — no markdown fences.
 PROFILE:
 {PROFILE}
 """

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Profile Settings — VC Job Agent{% endblock %}
+{% block title %}Profile Settings — Job Search Agent{% endblock %}
 
 {% block content %}
 <div class="px-6 py-8 max-w-3xl mx-auto" x-data="{ saved: {{ 'true' if request.query_params.get('saved') == '1' else 'false' }} }">
@@ -8,7 +8,7 @@
   <!-- Page header -->
   <div class="mb-8">
     <h1 class="text-2xl font-bold text-gray-100">Profile &amp; Settings</h1>
-    <p class="text-gray-400 text-sm mt-1">Your resume and job targets are used by Claude for scoring every new listing.</p>
+    <p class="text-gray-400 text-sm mt-1">Your resume and job targets are used by Claude to score every new listing. Claude reads your profile fresh on every scoring call.</p>
   </div>
 
   <!-- Flash message -->
@@ -61,35 +61,38 @@
 
     <!-- Section 3: Job Targets -->
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5">
-      <h2 class="text-base font-semibold text-gray-100">Job Targets</h2>
+      <div>
+        <h2 class="text-base font-semibold text-gray-100">Job Targets</h2>
+        <p class="text-xs text-gray-500 mt-1">These drive your search queries and help Claude understand what a good match looks like for you.</p>
+      </div>
 
       <!-- Target Titles -->
       <div>
         <label for="target_titles_raw" class="block text-sm font-medium text-gray-300 mb-1.5">Target Job Titles</label>
-        <p class="text-xs text-gray-500 mb-2">One title per line, e.g. Venture Capital Associate</p>
+        <p class="text-xs text-gray-500 mb-2">One title per line — used to generate LinkedIn/Indeed search queries</p>
         <textarea
           id="target_titles_raw"
           name="target_titles_raw"
-          rows="6"
+          rows="8"
           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
                  placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500
                  resize-y"
-          placeholder="Venture Capital Associate&#10;Investment Associate&#10;VC Analyst"
+          placeholder="Software Engineer&#10;Product Manager&#10;Data Scientist&#10;Engineering Manager"
         >{{ titles_raw }}</textarea>
       </div>
 
       <!-- Job Anticipations -->
       <div>
         <label for="job_anticipations" class="block text-sm font-medium text-gray-300 mb-1.5">Job Anticipations</label>
-        <p class="text-xs text-gray-500 mb-2">Describe the types of roles, domains, or seniority you're targeting.</p>
+        <p class="text-xs text-gray-500 mb-2">Describe target role types, domains, seniority, and location preferences. Claude reads this when scoring.</p>
         <textarea
           id="job_anticipations"
           name="job_anticipations"
-          rows="4"
+          rows="5"
           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 text-sm
                  placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500
                  resize-y"
-          placeholder="e.g. VC and CVC investor roles in deep-tech, hardware, AI, climate tech. Open to Associate through Principal level."
+          placeholder="e.g. Senior software engineering roles at early-stage startups. Open to staff or principal level. Prefer backend, distributed systems, or ML infrastructure. Remote or San Francisco Bay Area."
         >{{ settings.job_anticipations }}</textarea>
       </div>
     </div>

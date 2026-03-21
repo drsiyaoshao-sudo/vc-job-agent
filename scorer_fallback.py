@@ -2,13 +2,14 @@
 Fallback job scorer — no Claude API required.
 
 Three-layer scoring:
-  1. Title match   (0-45 pts) — investor role keywords in the job title
+  1. Title match   (0-45 pts) — role keywords in the job title across 4 buckets:
+                                VC/investor, founding engineer, research engineer, FAE/tech sales
   2. Domain match  (0-35 pts) — deep-tech / VC domain keywords in description
-  3. TF-IDF cosine (0-20 pts) — overall text similarity to Siyao's profile
+  3. TF-IDF cosine (0-20 pts) — overall text similarity to the candidate's profile
 
-Total maps to 0-100.  Penalties applied for junior roles and missing VC signals.
+Total maps to 0-100.  Penalties applied for junior roles and roles with no
+relevant signals across any of the 4 target buckets.
 Used automatically when Claude is unavailable or the API call fails.
-Scores are labelled "[fallback]" in the headline so you know the source.
 """
 from __future__ import annotations
 
@@ -34,25 +35,53 @@ def _get_profile_vectors(profile_text: str) -> tuple[list, dict]:
 
 
 # ── Role-title keywords (checked against job TITLE) ──────────────────────────
-# Each entry: (keywords, points_if_matched)
+# Each entry: (keywords, points, label, bucket)
+# Buckets: "vc", "founding", "research", "sales"
 
-TITLE_SIGNALS: list[tuple[list[str], int, str]] = [
-    (["general partner", "managing partner", "investment partner", "partner"], 45, "Partner-level VC role"),
-    (["principal", "investment principal", "venture principal"],               42, "Principal-level VC role"),
-    (["senior associate", "senior investment", "senior venture"],              38, "Senior Associate VC role"),
-    (["investment analyst", "venture analyst", "vc analyst", "cvc analyst"],  35, "VC Analyst role"),
-    (["investment associate", "venture associate", "vc associate"],            35, "VC Associate role"),
-    (["investor", "vc investor", "cvc investor", "venture investor"],         32, "Investor title"),
-    (["associate", "analyst"],                                                 28, "Associate/Analyst role"),
-    (["eir", "entrepreneur in residence"],                                     25, "EIR role"),
-    (["technology scout", "tech scout", "deal sourcing"],                      22, "Scout/Sourcing role"),
-    (["innovation", "technology strategy", "corporate development"],           15, "Innovation/Strategy role"),
+TITLE_SIGNALS: list[tuple[list[str], int, str, str]] = [
+    # ── Specific compound titles first (avoid false positives from single-word matches) ──
+
+    # ── FAE / technical sales / solutions ────────────────────────────────────
+    (["field application engineer", "fae"],                                    43, "Field Application Engineer",  "sales"),
+    (["pre-sales engineer", "presales engineer", "pre sales engineer"],        35, "Pre-sales engineer role",     "sales"),
+    (["technical sales engineer", "sales engineer"],                           36, "Technical sales engineer",    "sales"),
+    (["technical account manager"],                                             33, "Technical account manager",   "sales"),
+    (["solutions engineer", "solutions architect"],                             38, "Solutions engineer role",     "sales"),
+    (["application engineer"],                                                  38, "Application engineer role",   "sales"),
+
+    # ── Research engineer / scientist (compound phrases before bare 'principal') ─
+    (["principal research", "principal scientist", "principal researcher"],    43, "Principal research role",     "research"),
+    (["staff research", "staff scientist", "staff researcher"],                40, "Staff research role",         "research"),
+    (["lead research", "research lead", "senior research", "sr. research"],    37, "Senior research role",        "research"),
+    (["research engineer", "research scientist", "research specialist"],       32, "Research engineer role",      "research"),
+
+    # ── Founding / early-stage engineer ──────────────────────────────────────
+    (["founding engineer", "founding software", "founding hardware"],          45, "Founding engineer role",      "founding"),
+    (["staff engineer", "staff software", "staff hardware"],                   40, "Staff engineer role",         "founding"),
+    (["early stage engineer", "early-stage engineer"],                         38, "Early-stage engineer role",   "founding"),
+    (["principal engineer", "senior staff engineer"],                          35, "Principal engineer role",     "founding"),
+    (["senior engineer", "lead engineer", "sr. engineer", "sr engineer"],      30, "Senior/lead engineer role",   "founding"),
+
+    # ── VC / investor ────────────────────────────────────────────────────────
+    (["general partner", "managing partner", "investment partner"],            45, "Partner-level VC role",       "vc"),
+    (["venture partner", "operating partner"],                                 42, "Partner-level VC role",       "vc"),
+    (["investment principal", "venture principal"],                            42, "Principal-level VC role",     "vc"),
+    (["senior associate", "senior investment", "senior venture"],              38, "Senior Associate VC role",    "vc"),
+    (["investment analyst", "venture analyst", "vc analyst", "cvc analyst"],  35, "VC Analyst role",             "vc"),
+    (["investment associate", "venture associate", "vc associate"],            35, "VC Associate role",           "vc"),
+    (["investor", "vc investor", "cvc investor", "venture investor"],         32, "Investor title",              "vc"),
+    (["partner"],                                                              40, "Partner-level VC role",       "vc"),
+    (["principal"],                                                            30, "Principal-level VC role",     "vc"),
+    (["associate", "analyst"],                                                 28, "Associate/Analyst role",      "vc"),
+    (["eir", "entrepreneur in residence"],                                     38, "EIR role",                    "vc"),
+    (["technology scout", "tech scout", "deal sourcing"],                      22, "Scout/Sourcing role",         "vc"),
+    (["innovation", "technology strategy", "corporate development"],           15, "Innovation/Strategy role",    "vc"),
 ]
 
 # ── Domain keywords (checked against full text) ───────────────────────────────
 
 DOMAIN_GROUPS: list[tuple[list[str], int, str]] = [
-    # Hardware / deep-tech — Siyao's core expertise
+    # Hardware / deep-tech
     (["mems", "sensors", "semiconductor", "hardware", "embedded", "photonics",
       "advanced materials", "edge ai", "tinyml", "reservoir computing",
       "neuromorphic", "fpga", "asic", "microelectronics"],                    12, "hardware/deep-tech domain"),
@@ -78,15 +107,36 @@ DOMAIN_GROUPS: list[tuple[list[str], int, str]] = [
       "deal flow", "portfolio companies", "startup", "founder", "commercialization",
       "ip strategy", "patent"],                                                8,  "startup/VC ecosystem"),
 
-    # Canada / remote
-    (["canada", "montreal", "toronto", "remote", "global", "hybrid"],         4,  "location fit"),
+    # Remote / flexible location
+    (["remote", "global", "hybrid", "distributed"],                           4,  "location fit"),
 ]
 
-# ── Core VC signals — if NONE present, apply penalty ─────────────────────────
-CORE_VC_SIGNALS = [
+# ── Core signals — if NONE present across any target bucket, apply penalty ───
+# A job needs at least one signal from any target role bucket to avoid the penalty.
+CORE_SIGNALS = [
+    # VC/investor
     "venture", "investment", "investor", "capital", "fund", "portfolio",
     "associate", "principal", "partner", "analyst",
+    "eir", "entrepreneur in residence",
+    # Founding / early-stage
+    "founding", "seed", "series a", "series b", "early stage", "early-stage",
+    "startup",
+    # Research
+    "research engineer", "research scientist", "mems", "embedded", "edge ai",
+    # FAE / sales
+    "field application", "fae", "solutions engineer", "sales engineer",
+    "technical sales", "pre-sales", "application engineer",
 ]
+
+# Per-bucket: signals that indicate a specific non-VC role type
+BUCKET_SIGNALS: dict[str, list[str]] = {
+    "founding": ["founding engineer", "staff engineer", "early stage", "series a", "series b",
+                 "seed stage", "startup equity", "equity stake", "ownership"],
+    "research": ["research engineer", "research scientist", "phd", "publication", "mems",
+                 "embedded system", "edge ai", "tinyml", "sensor"],
+    "sales":    ["field application", "fae", "solutions engineer", "technical sales",
+                 "sales engineer", "pre-sales", "customer", "demo", "poc"],
+}
 
 # ── TF-IDF helpers ────────────────────────────────────────────────────────────
 
@@ -136,9 +186,11 @@ def score_job_fallback(
 
     # ── Layer 1: title match (0-45) ───────────────────────────────────────────
     title_pts = 0
-    for keywords, pts, label in TITLE_SIGNALS:
+    matched_bucket = None
+    for keywords, pts, label, bucket in TITLE_SIGNALS:
         if any(kw in title_l for kw in keywords):
             title_pts = pts
+            matched_bucket = bucket
             pros.append(f"Title matches {label}")
             break  # use best matching tier only
 
@@ -160,38 +212,70 @@ def score_job_fallback(
     raw = title_pts + domain_pts + cosine_pts  # max theoretical = 100
 
     # ── Penalties ─────────────────────────────────────────────────────────────
-    if not any(sig in full_text for sig in CORE_VC_SIGNALS):
+    # Apply penalty only if no signals from ANY target bucket are present
+    has_core_signal = any(sig in full_text for sig in CORE_SIGNALS)
+    if not has_core_signal:
         raw *= 0.25
-        cons.append("No investor/VC signals found — likely not a VC role")
+        cons.append("No signals from any target role bucket (VC, founding eng, research, FAE/sales)")
 
     if any(t in title_l for t in ["intern", "internship", "junior", "entry level", "entry-level"]):
         raw *= 0.6
-        cons.append("Junior/entry-level title — below Siyao's CTO/EIR seniority")
+        cons.append("Junior/entry-level title — likely below target seniority")
 
     if not pros:
-        cons.append("No keyword overlap with VC or deep-tech profile")
+        cons.append("No keyword overlap with target role profile")
 
     score = max(0, min(100, round(raw)))
 
     # ── Headline ──────────────────────────────────────────────────────────────
+    bucket_labels = {
+        "vc":       ("VC/CVC investor", "investor"),
+        "founding": ("founding/staff engineer", "founding eng"),
+        "research": ("research engineer", "research eng"),
+        "sales":    ("FAE/solutions/sales engineer", "FAE/sales"),
+    }
+    bucket_label, bucket_short = bucket_labels.get(matched_bucket, ("role", "role"))
+
     if score >= 80:
-        headline = f"Strong VC/CVC match — {title} at {company}"
+        headline = f"Strong {bucket_label} match — {title} at {company}"
     elif score >= 60:
-        headline = f"Good investor role fit — {title} at {company}"
+        headline = f"Good {bucket_label} fit — {title} at {company}"
     elif score >= 40:
-        headline = f"Moderate overlap with VC profile — {title} at {company}"
+        headline = f"Moderate overlap with {bucket_short} profile — {title} at {company}"
     else:
-        headline = f"Low relevance to VC career target — {title} at {company}"
+        headline = f"Low relevance to target career — {title} at {company}"
+
+    _key_reqs = {
+        "vc": [
+            "Verify this is an investor/investment role (not an operating position)",
+            "Confirm seniority level aligns with Associate→Principal→Partner tier",
+            "Check domain focus aligns with deep-tech, hardware, or climate thesis",
+        ],
+        "founding": [
+            "Confirm early-stage / Seed–Series B context (not post-IPO or large corp)",
+            "Check equity / ownership component",
+            "Verify deep-tech or hardware/AI domain alignment",
+        ],
+        "research": [
+            "Confirm senior/principal/staff seniority (not entry-level research)",
+            "Check domain aligns with MEMS, edge AI, embedded, or industrial systems",
+            "Verify R&D independence and publication/patent track expected",
+        ],
+        "sales": [
+            "Confirm technical depth (not pure account management)",
+            "Check hardware, semiconductor, or industrial IoT customer base",
+            "Verify pre-sales / solutions architecture responsibilities",
+        ],
+    }
+    key_reqs = _key_reqs.get(matched_bucket, [
+        "Assess alignment with VC, founding eng, research eng, or FAE/sales targets",
+    ])
 
     return {
         "score":            score,
         "headline":         headline,
         "pros":             pros[:4],
         "cons":             cons[:3],
-        "key_requirements": [
-            "Verify this is an investor/investment role (not an operating position)",
-            "Confirm seniority level aligns with Associate→Principal→Partner tier",
-            "Check domain focus aligns with deep-tech, hardware, or climate thesis",
-        ],
+        "key_requirements": key_reqs,
         "method": "fallback",
     }

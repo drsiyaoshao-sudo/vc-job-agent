@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 CALLMEBOT_PHONE  = os.getenv("CALLMEBOT_PHONE", "")      # e.g. 14388850126 (no +)
 CALLMEBOT_APIKEY = os.getenv("CALLMEBOT_APIKEY", "")
 
-GMAIL_USER     = os.getenv("GMAIL_USER", "")             # dr.siyaoshao@gmail.com
+GMAIL_USER     = os.getenv("GMAIL_USER", "")
 GMAIL_APP_PASS = os.getenv("GMAIL_APP_PASS", "")
 NOTIFY_EMAIL   = os.getenv("NOTIFY_EMAIL", GMAIL_USER)   # send-to address
 
