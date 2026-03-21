@@ -51,6 +51,13 @@ IMPORTANT: FAE, solutions engineer, technical sales engineer, and founding/staff
 in hardware, semiconductor, IoT, or AI should score 65–100 depending on domain fit — they are
 PRIMARY targets, NOT secondary or adjacent roles.
 
+PENALTY — ESTABLISHED BIG-TECH COMPANIES: Roles at large, established companies (FAANG:
+Google/Meta/Amazon/Apple/Netflix; plus Microsoft, OpenAI, Anthropic, Nvidia, Intel, Qualcomm,
+IBM, Oracle, Salesforce, Tesla, Samsung, Sony, Cisco, Broadcom, AMD, Stripe, Palantir, etc.)
+should score 20–35 points LOWER than an equivalent role at a startup or VC firm. These companies
+are not aligned with the candidate's early-stage, hardware-first, deep-tech VC/startup profile.
+A "Staff Research Engineer at Google" is a 30–45, not a 70.
+
 Return ONLY valid JSON — no markdown, no extra text.
 """
 

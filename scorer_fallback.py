@@ -111,6 +111,21 @@ DOMAIN_GROUPS: list[tuple[list[str], int, str]] = [
     (["canada", "montreal", "toronto", "remote", "global", "hybrid"],         4,  "location fit"),
 ]
 
+# ── Established big-tech / large-company penalty ─────────────────────────────
+# These companies are not aligned with an early-stage hardware-first VC profile.
+# Roles there get a 55% score reduction regardless of title match.
+BIG_TECH = {
+    "google", "deepmind", "meta", "facebook", "instagram", "whatsapp",
+    "amazon", "aws", "apple", "netflix", "microsoft", "openai", "anthropic",
+    "nvidia", "intel", "qualcomm", "ibm", "oracle", "salesforce",
+    "uber", "lyft", "airbnb", "twitter", "x corp", "bytedance", "tiktok",
+    "samsung", "lg electronics", "sony", "tesla", "spacex",
+    "adobe", "sap", "vmware", "palantir", "snowflake", "databricks",
+    "stripe", "square", "block", "paypal", "visa", "mastercard",
+    "jpmorgan", "goldman sachs", "morgan stanley", "blackrock",
+    "cisco", "broadcom", "amd", "arm",
+}
+
 # ── Core signals — if NONE present across any target bucket, apply penalty ───
 # A job needs at least one signal from any target role bucket to avoid the penalty.
 CORE_SIGNALS = [
@@ -218,9 +233,14 @@ def score_job_fallback(
         raw *= 0.25
         cons.append("No signals from any target role bucket (VC, founding eng, research, FAE/sales)")
 
+    company_l = company.lower()
+    if any(bt in company_l for bt in BIG_TECH):
+        raw *= 0.45
+        cons.append("Large established company — not aligned with early-stage hardware-first profile")
+
     if any(t in title_l for t in ["intern", "internship", "junior", "entry level", "entry-level"]):
         raw *= 0.6
-        cons.append("Junior/entry-level title — below Siyao's seniority")
+        cons.append("Junior/entry-level title — below target seniority")
 
     if not pros:
         cons.append("No keyword overlap with target role profile")
