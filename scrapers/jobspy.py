@@ -157,9 +157,17 @@ def scrape_mainstream(queries: list[str] | None = None) -> list[dict]:
 
     if not _have_jobspy:
         logger.info("[jobspy] Direct import unavailable (Python 3.9); using jobspy310 subprocess")
-        jobs = _scrape_via_subprocess(active_queries)
-        logger.info(f"[jobspy] Total unique jobs scraped via subprocess: {len(jobs)}")
-        return jobs
+        raw = _scrape_via_subprocess(active_queries)
+        # Convert posted_date ISO strings back to datetime objects
+        for job in raw:
+            pd = job.get("posted_date")
+            if isinstance(pd, str) and pd:
+                try:
+                    job["posted_date"] = datetime.fromisoformat(pd)
+                except ValueError:
+                    job["posted_date"] = None
+        logger.info(f"[jobspy] Total unique jobs scraped via subprocess: {len(raw)}")
+        return raw
 
     all_jobs: list[dict] = []
     seen_urls: set[str] = set()
