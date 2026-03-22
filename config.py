@@ -130,8 +130,6 @@ INVESTOR_BOARD_URLS: list[dict] = [
 
     # Deep-tech / hardware / climate focused
     {"board": "Climatebase",                "url": "https://climatebase.org/jobs"},
-    {"board": "MCJ Collective",             "url": "https://www.mcjcollective.com/my-community/job-board"},
-    {"board": "Hardware Club Jobs",         "url": "https://jobs.hardwareclub.co"},
 ]
 
 # ── Direct VC/CVC firm career page URLs to watch ─────────────────────────────

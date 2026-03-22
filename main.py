@@ -19,8 +19,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
-from apscheduler.schedulers.background import BackgroundScheduler
-
 from database import Job, JobStatus, UserSettings, create_db, get_session, get_settings, upsert_job
 from notifier import send_health_check, send_weekly_report
 from scrapers import scrape_gmail_alerts, scrape_mainstream, scrape_vc_boards, scrape_wellfound
@@ -29,36 +27,14 @@ from scorer import rescore_job, score_unscored_jobs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Scheduler ─────────────────────────────────────────────────────────────────
-
-_scheduler = BackgroundScheduler(timezone="America/Toronto")
-
-def _scheduled_scrape():
-    """Scrape + score pipeline for scheduled runs."""
-    from database import engine
-    from sqlmodel import Session as S
-    _run_scrape(lambda: S(engine))
-
-# Scrape 4× daily
-for _hour in (3, 10, 17, 21):
-    _scheduler.add_job(_scheduled_scrape, "cron", hour=_hour, minute=0)
-
-# Daily health check email at 08:00 ET
-_scheduler.add_job(send_health_check, "cron", hour=8, minute=0)
-
-# Weekly digest every Monday 08:00 ET
-_scheduler.add_job(send_weekly_report, "cron", day_of_week="mon", hour=8, minute=0)
-
 
 # ── App lifecycle ─────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db()
-    _scheduler.start()
-    logger.info("Scheduler started — scraping at 03:00, 10:00, 17:00, 21:00 ET · weekly report Mondays 08:00 ET")
+    logger.info("VC Job Agent started — scheduling via system cron (03:00, 10:00, 17:00, 21:00 ET)")
     yield
-    _scheduler.shutdown(wait=False)
 
 app = FastAPI(title="VC Job Agent", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -344,6 +320,13 @@ def trigger_score(background_tasks: BackgroundTasks):
 def trigger_weekly_report(background_tasks: BackgroundTasks):
     """Manually trigger the weekly digest email (useful for testing)."""
     background_tasks.add_task(send_weekly_report)
+    return JSONResponse({"status": "sending"})
+
+
+@app.post("/api/health-check")
+def trigger_health_check(background_tasks: BackgroundTasks):
+    """Trigger the daily health-check email (called by system cron at 08:00 ET)."""
+    background_tasks.add_task(send_health_check)
     return JSONResponse({"status": "sending"})
 
 
