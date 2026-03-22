@@ -44,7 +44,7 @@ All four are primary targets — scored 65–100 when domain/seniority align:
 ## Architecture
 
 ```
-main.py               — FastAPI app + APScheduler (scrape 4×/day, health check daily, digest weekly)
+main.py               — FastAPI app; scheduling via system cron (no in-process scheduler)
 config.py             — Profile, SEARCH_QUERIES, WELLFOUND_QUERIES, TARGET_FIRM_URLS, thresholds
 database.py           — SQLModel: Job + UserSettings; upsert_job(); alter_db() for migrations
 scorer.py             — Claude Opus 4.6 scoring via messages.parse() + Pydantic JobMatchResult
@@ -249,9 +249,30 @@ launchctl unload ~/Library/LaunchAgents/com.siyaoshao.vcjobagent.plist
 
 # Logs
 tail -f ~/job-agent/agent.log
+tail -f ~/job-agent/cron.log   # cron trigger confirmations
 ```
 
 App runs on **port 8000**. Second app on same machine → use port 8001.
+
+## Scheduling
+
+Scrapes are triggered by **system cron**, not in-process APScheduler.
+APScheduler's background thread was silently dying and missing scheduled slots.
+
+```
+crontab -e   # view/edit the schedule
+```
+
+Current schedule (all times ET / America/Toronto):
+
+| Cron | Endpoint | Purpose |
+|------|----------|---------|
+| `0 3,10,17,21 * * *` | `POST /api/scrape` | Scrape + score 4×/day |
+| `0 8 * * *` | `POST /api/health-check` | Daily health-check email |
+| `0 8 * * 1` | `POST /api/weekly-report` | Monday digest email |
+
+To change the schedule: `crontab -e`. To add a new HTTP-triggerable action, add a
+`POST` endpoint in `main.py` and a corresponding cron line.
 
 ---
 
