@@ -7,7 +7,7 @@ A personal AI-powered job search agent built for **Dr. Siyao Shao**, targeting f
 - **Automated scraping** — four-stage pipeline runs 4× daily (see [Scraping Pipeline](#scraping-pipeline))
 - **AI-powered scoring** — Claude Opus 4.6 scores each job 0–100 with pros, cons, and tailored application tips (see [Score Logic](#score-logic))
 - **Smart notifications**
-  - Score ≥ 90 → instant WhatsApp message (CallMeBot)
+  - Score ≥ 90 → instant WhatsApp message (CallMeBot), current WhatsApp bot is not functioning by the default method. Need to do a checkout or using telegram bot instead.
   - Score ≥ 75 → instant email alert (Gmail SMTP)
   - Every Monday 8 AM → weekly digest email
   - Every day 8 AM → health check email confirming the agent is running
